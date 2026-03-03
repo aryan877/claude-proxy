@@ -58,3 +58,6 @@ package-lock.json
 # TypeScript build output
 dist/
 *.tsbuildinfo
+
+# Personal folder
+The Guide/

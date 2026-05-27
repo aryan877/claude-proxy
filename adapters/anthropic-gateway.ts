@@ -43,6 +43,14 @@ let active: ProviderModel | null = defaultProvider && defaultModel
 
 const fastify = Fastify({ logger: false, bodyLimit: 100 * 1024 * 1024 });
 
+// Log every incoming request so we can spot validation probes Claude Code sends
+// to endpoints we may not handle (e.g. /v1/messages/count_tokens).
+fastify.addHook("onRequest", async (req) => {
+  if (req.url !== "/healthz" && req.url !== "/_status") {
+    console.log(`[ccx] HIT: ${req.method} ${req.url}`);
+  }
+});
+
 // startedAt captured at module load = process birth time
 const startedAt = Date.now();
 

@@ -59,7 +59,7 @@ function dbg(line: string) {
 // to endpoints we may not handle (e.g. /v1/messages/count_tokens).
 fastify.addHook("onRequest", async (req) => {
   if (req.url !== "/healthz" && req.url !== "/_status") {
-    dbg(`[ccx] HIT: ${req.method} ${req.url}`);
+    dbg(`[ccx] HIT: ${req.method} ${req.url} headers=${JSON.stringify(req.headers).slice(0, 800)}`);
   }
 });
 fastify.addHook("onResponse", async (req, reply) => {

@@ -106,12 +106,16 @@ Use Claude Code's `/model` command. The proxy intercepts it and routes to the ri
 Instead of typing `provider:full-model-name`, use shortcuts:
 
 ```
-/model codex          → gpt-5.3-codex (default Codex)
-/model codex-5.3      → gpt-5.3-codex
-/model codex-5.2      → gpt-5.2-codex
-/model codex-max      → gpt-5.1-codex-max
-/model codex-mini     → gpt-5.1-codex-mini
-/model cx             → gpt-5.3-codex (short alias)
+/model codex            → gpt-5.5 (default Codex — frontier)
+/model codex-5.5        → gpt-5.5
+/model codex-5.4        → gpt-5.4
+/model codex-5.4-mini   → gpt-5.4-mini
+/model codex-5.3        → gpt-5.3-codex
+/model codex-5.2        → gpt-5.2
+/model codex-mini       → gpt-5.4-mini
+/model cx               → gpt-5.5 (short alias)
+/model cx55 cx54 cx54m cx53 cx52   → individual versions
+/model gpt55 gpt54 gpt54m gpt52    → version-style aliases
 
 /model gemini         → gemini-3.1-pro-preview (default Gemini)
 /model gemini-pro     → gemini-3.1-pro-preview
@@ -136,7 +140,7 @@ Instead of typing `provider:full-model-name`, use shortcuts:
 /model haiku          → claude-haiku-4-5
 ```
 
-You can also use the full `provider:model` format: `/model codex-oauth:gpt-5.3-codex`
+You can also use the full `provider:model` format: `/model codex-oauth:gpt-5.5`
 
 ### Reasoning Levels
 

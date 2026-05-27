@@ -49,22 +49,33 @@ const MODEL_SHORTCUTS: Record<string, string> = {
   gp: "gemini-oauth:gemini-3.1-pro-preview",
   gf: "gemini-oauth:gemini-3-flash-preview",
   // Codex OAuth shortcuts (OpenAI ChatGPT Plus subscription)
-  codex: "codex-oauth:gpt-5.3-codex",
+  // Live catalog (chatgpt.com/backend-api/codex/models): gpt-5.5, gpt-5.4,
+  // gpt-5.4-mini, gpt-5.3-codex, gpt-5.2. All support low/medium/high/xhigh.
+  codex: "codex-oauth:gpt-5.5",
+  "codex-5.5": "codex-oauth:gpt-5.5",
+  "codex-5.4": "codex-oauth:gpt-5.4",
+  "codex-5.4-mini": "codex-oauth:gpt-5.4-mini",
   "codex-5.3": "codex-oauth:gpt-5.3-codex",
-  "codex-5.2": "codex-oauth:gpt-5.2-codex",
-  "codex-max": "codex-oauth:gpt-5.1-codex-max",
-  "codex-mini": "codex-oauth:gpt-5.1-codex-mini",
+  "codex-5.2": "codex-oauth:gpt-5.2",
+  "codex-mini": "codex-oauth:gpt-5.4-mini",
+  "gpt55": "codex-oauth:gpt-5.5",
+  "gpt54": "codex-oauth:gpt-5.4",
+  "gpt54m": "codex-oauth:gpt-5.4-mini",
+  "gpt53c": "codex-oauth:gpt-5.3-codex",
   "gpt52": "codex-oauth:gpt-5.2",
-  cx: "codex-oauth:gpt-5.3-codex",
+  cx: "codex-oauth:gpt-5.5",
+  cx55: "codex-oauth:gpt-5.5",
+  cx54: "codex-oauth:gpt-5.4",
+  cx54m: "codex-oauth:gpt-5.4-mini",
   cx53: "codex-oauth:gpt-5.3-codex",
-  cx52: "codex-oauth:gpt-5.2-codex",
+  cx52: "codex-oauth:gpt-5.2",
 };
 
 // When Claude Code internally sends claude-haiku-*/claude-sonnet-* requests
 // (Explore subagent, title gen, quota checks), remap to the active provider's
 // equivalent so it doesn't fail when Anthropic keys aren't configured.
 const PROVIDER_FAST_MODEL: Partial<Record<ProviderKey, string>> = {
-  "codex-oauth": "gpt-5.1-codex-mini",
+  "codex-oauth": "gpt-5.4-mini",
   "gemini-oauth": "gemini-3-flash-preview",
   "openai": "gpt-5-mini",
   "openrouter": "anthropic/claude-haiku-4-5",
@@ -72,9 +83,9 @@ const PROVIDER_FAST_MODEL: Partial<Record<ProviderKey, string>> = {
 };
 
 const PROVIDER_MAIN_MODEL: Partial<Record<ProviderKey, string>> = {
-  "codex-oauth": "gpt-5.3-codex",
+  "codex-oauth": "gpt-5.5",
   "gemini-oauth": "gemini-3.1-pro-preview",
-  "openai": "gpt-5.3",
+  "openai": "gpt-5.5",
   "openrouter": "anthropic/claude-sonnet-4-6",
   "glm": "glm-5",
 };

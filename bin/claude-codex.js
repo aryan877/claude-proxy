@@ -95,24 +95,27 @@ async function main() {
   }
   console.log("");
 
-  // Available models
+  // Available models — pulled from chatgpt.com/backend-api/codex/models
   console.log("  Models (use with /model):");
   console.log("  ─────────────────────────────────────────────");
-  console.log("    codex          gpt-5.3-codex          (default)");
-  console.log("    codex-5.3      gpt-5.3-codex");
-  console.log("    codex-5.2      gpt-5.2-codex");
-  console.log("    codex-max      gpt-5.1-codex-max");
-  console.log("    codex-mini     gpt-5.1-codex-mini");
-  console.log("    gpt52          gpt-5.2");
+  console.log("    codex            gpt-5.5             (default — frontier)");
+  console.log("    codex-5.5        gpt-5.5             Frontier coding/research");
+  console.log("    codex-5.4        gpt-5.4             Strong everyday coding");
+  console.log("    codex-5.4-mini   gpt-5.4-mini        Small/fast/cheap");
+  console.log("    codex-5.3        gpt-5.3-codex       Coding-optimized");
+  console.log("    codex-5.2        gpt-5.2             Long-running agents");
+  console.log("    codex-mini       gpt-5.4-mini        Alias for 5.4-mini");
+  console.log("");
+  console.log("  Short aliases: cx cx55 cx54 cx54m cx53 cx52  /  gpt55 gpt54 gpt54m gpt52");
   console.log("");
   console.log("  Reasoning levels (append @level to any model):");
   console.log("  ─────────────────────────────────────────────");
-  console.log("    codex@low      Low reasoning");
-  console.log("    codex@medium   Medium reasoning");
-  console.log("    codex@high     High reasoning         (default)");
-  console.log("    codex@xhigh    Extra High reasoning");
+  console.log("    @low       Fast responses, lighter reasoning");
+  console.log("    @medium    Balanced (Codex default)");
+  console.log("    @high      Deeper reasoning           (proxy default)");
+  console.log("    @xhigh     Extra-high reasoning");
   console.log("");
-  console.log("  Examples: /model codex-5.2@low  /model codex@xhigh");
+  console.log("  Examples: /model codex@xhigh   /model codex-5.4-mini@low");
   console.log("");
 
   // Extra flags
@@ -131,7 +134,7 @@ async function main() {
   await launchProxy({
     rootDir,
     provider: "codex-oauth",
-    model: "gpt-5.3-codex",
+    model: "gpt-5.5",
     defaultModel: "codex",
     startedBy: "claude-codex",
     forceRestart: args.includes("--restart"),

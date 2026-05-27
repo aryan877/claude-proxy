@@ -51,12 +51,21 @@ function toGeminiParts(
     if (block.type === "text") {
       if (block.text) parts.push({ text: block.text });
     } else if (block.type === "image") {
-      parts.push({
-        inlineData: {
-          mimeType: block.source.media_type,
-          data: block.source.data,
-        },
-      });
+      if (block.source.type === "base64") {
+        parts.push({
+          inlineData: {
+            mimeType: block.source.media_type,
+            data: block.source.data,
+          },
+        });
+      } else if (block.source.type === "url") {
+        parts.push({
+          fileData: {
+            fileUri: block.source.url,
+            mimeType: block.source.media_type ?? "image/png",
+          },
+        });
+      }
     } else if (block.type === "tool_use") {
       parts.push({
         functionCall: {

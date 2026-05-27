@@ -1,116 +1,260 @@
-// Codex OAuth adapter - uses OpenAI OAuth tokens with Responses API
-// Supports tool calling, reasoning, web search, and streaming
-// Uses /v1/responses (NOT /v1/chat/completions) as required by Codex CLI OAuth tokens
+// Codex adapter — Anthropic Messages API → OpenAI Responses API (/v1/responses)
+//
+// Mirrors what the real Codex CLI sends on the wire. References:
+//   codex-rs/core/src/client.rs::build_responses_request
+//   codex-rs/codex-api/src/common.rs::ResponsesApiRequest
+//   codex-rs/codex-api/src/sse/responses.rs
+//   codex-rs/login/src/auth/default_client.rs (originator / User-Agent)
+//   codex-rs/model-provider/src/bearer_auth_provider.rs (ChatGPT-Account-ID)
+//
+// Wire decisions:
+//   - Always POST to /v1/responses (OAuth → ChatGPT backend, API key → api.openai.com).
+//     Codex CLI does NOT use /v1/chat/completions. Wire format is responses-only.
+//   - Stream tools/text/reasoning incrementally as Anthropic SSE events.
+//   - Cache encrypted_content reasoning blobs per session and re-inject on next turn.
 
+import { readFileSync } from "fs";
+import { homedir, release, arch, type } from "os";
+import { join } from "path";
 import type { EventSourceMessage } from "eventsource-parser";
 import { createParser } from "eventsource-parser";
 import { FastifyReply } from "fastify";
 import { getCodexAccessToken, getCodexAccountId } from "../openai-auth.js";
 import { sendEvent } from "../sse.js";
+import {
+  conversationKey,
+  reasoningItems,
+  setReasoningItems,
+  threadIdFor,
+} from "../codex-reasoning-cache.js";
 import type {
   AnthropicContentBlock,
   AnthropicMessage,
   AnthropicRequest,
   AnthropicTool,
+  AnthropicToolChoice,
   ReasoningLevel,
 } from "../types.js";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const CHATGPT_CODEX_BASE = "https://chatgpt.com/backend-api/codex";
 
-// ── Format converters: Anthropic → OpenAI Responses API ──────────────
+const DEFAULT_ORIGINATOR = "codex_cli_rs";
+const DEFAULT_CODEX_CLI_VERSION = "0.134.0";
 
-/** Convert Anthropic tools to Responses API tool format */
-function toResponsesTools(tools: AnthropicTool[]) {
-  return tools.map((t) => ({
-    type: "function" as const,
-    name: t.name,
-    description: t.description ?? "",
-    parameters: t.input_schema ?? { type: "object", properties: {} },
-  }));
+// ── Header builders ──────────────────────────────────────────────────
+
+function installationId(): string {
+  try {
+    return readFileSync(join(homedir(), ".codex", "installation_id"), "utf-8").trim();
+  } catch {
+    return "";
+  }
 }
 
-/** Convert Anthropic messages to Responses API input items */
-function toResponsesInput(messages: AnthropicMessage[]): any[] {
-  const items: any[] = [];
+/** Build the User-Agent string Codex CLI sends. Matches `get_codex_user_agent()`. */
+function codexUserAgent(): string {
+  const version = process.env.CODEX_CLI_VERSION || DEFAULT_CODEX_CLI_VERSION;
+  return `${DEFAULT_ORIGINATOR}/${version} (${type()} ${release()}; ${arch()})`;
+}
+
+// ── Tool conversion (Anthropic → Responses API) ──────────────────────
+
+type ResponsesTool =
+  | {
+      type: "function";
+      name: string;
+      description: string;
+      strict: false;
+      parameters: unknown;
+    }
+  | {
+      type: "web_search";
+      search_context_size?: "low" | "medium" | "high";
+    };
+
+export function toResponsesTools(tools: AnthropicTool[] | undefined): ResponsesTool[] {
+  const out: ResponsesTool[] = [];
+  if (tools) {
+    for (const t of tools) {
+      out.push({
+        type: "function",
+        name: t.name,
+        description: t.description ?? "",
+        strict: false,
+        parameters: t.input_schema ?? { type: "object", properties: {} },
+      });
+    }
+  }
+  // Codex CLI registers native web_search; Claude Code's WebSearch/WebFetch are stripped
+  // upstream in anthropic-gateway.ts before they reach us.
+  out.push({ type: "web_search" });
+  return out;
+}
+
+export function toResponsesToolChoice(c?: AnthropicToolChoice): string | { type: string; name?: string } {
+  if (!c || c.type === "auto") return "auto";
+  if (c.type === "any") return "required";
+  if (c.type === "none") return "none";
+  if (c.type === "tool") return { type: "function", name: c.name };
+  return "auto";
+}
+
+// ── Input conversion (Anthropic messages → Responses ResponseItem[]) ──
+
+type ResponseMessageContent =
+  | { type: "input_text"; text: string }
+  | { type: "input_image"; image_url: string; detail?: "auto" | "low" | "high" }
+  | { type: "output_text"; text: string };
+
+export type ReasoningResponseItem = {
+  type: "reasoning";
+  summary: Array<{ type: "summary_text"; text: string }>;
+  encrypted_content?: string | null;
+};
+
+export type ResponseItem =
+  | {
+      type: "message";
+      role: "user" | "assistant" | "system" | "developer";
+      content: ResponseMessageContent[];
+    }
+  | { type: "function_call"; call_id: string; name: string; arguments: string }
+  | { type: "function_call_output"; call_id: string; output: string }
+  | ReasoningResponseItem;
+
+function flattenSystem(system: AnthropicRequest["system"]): string {
+  if (!system) return "";
+  if (typeof system === "string") return system;
+  return system
+    .map((b) => (typeof b === "string" ? b : (b as { text?: string }).text || ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
+function imageUrlForBlock(block: Extract<AnthropicContentBlock, { type: "image" }>): string {
+  const s = block.source;
+  if (s.type === "base64") return `data:${s.media_type};base64,${s.data}`;
+  if (s.type === "url") return s.url;
+  return "";
+}
+
+function stringifyToolResult(content: string | AnthropicContentBlock[]): string {
+  if (typeof content === "string") return content;
+  // Anthropic allows tool_result content to be a list of blocks. Codex/OpenAI
+  // function_call_output.output is a plain string, so flatten text + JSON-encode the rest.
+  return content
+    .map((b) => {
+      if (b.type === "text") return b.text;
+      if (b.type === "image") return `[image: ${(b as { source: { media_type?: string } }).source.media_type || "unknown"}]`;
+      return JSON.stringify(b);
+    })
+    .join("\n");
+}
+
+export function toResponsesInput(
+  messages: AnthropicMessage[],
+  injectedReasoning: ResponseItem[] = [],
+): ResponseItem[] {
+  const out: ResponseItem[] = [];
+  // Encrypted reasoning carries the prior turn's chain of thought; inject before the new user turn.
+  out.push(...injectedReasoning);
 
   for (const m of messages) {
     if (typeof m.content === "string") {
-      items.push({
+      out.push({
         type: "message",
-        role: m.role === "assistant" ? "assistant" : "user",
+        role: m.role,
         content: [
-          {
-            type: m.role === "assistant" ? "output_text" : "input_text",
-            text: m.content,
-          },
+          m.role === "assistant"
+            ? { type: "output_text", text: m.content }
+            : { type: "input_text", text: m.content },
         ],
       });
       continue;
     }
 
-    // Collect parts for this message
-    const contentParts: any[] = [];
-    const functionCalls: any[] = [];
-    const functionOutputs: any[] = [];
+    const inlineContent: ResponseMessageContent[] = [];
+    const trailingItems: ResponseItem[] = [];
+    const leadingItems: ResponseItem[] = [];
 
     for (const block of m.content as AnthropicContentBlock[]) {
-      if (block.type === "text") {
-        const textType = m.role === "assistant" ? "output_text" : "input_text";
-        contentParts.push({ type: textType, text: block.text });
-      } else if (block.type === "tool_use") {
-        // Function calls are separate items in Responses API
-        functionCalls.push({
-          type: "function_call",
-          call_id: block.id,
-          name: block.name,
-          arguments:
-            typeof block.input === "string"
-              ? block.input
-              : JSON.stringify(block.input),
-        });
-      } else if (block.type === "tool_result") {
-        const output =
-          typeof block.content === "string"
-            ? block.content
-            : JSON.stringify(block.content);
-        functionOutputs.push({
-          type: "function_call_output",
-          call_id: block.tool_use_id,
-          output,
-        });
-      } else if (block.type === "image") {
-        contentParts.push({
-          type: "input_image",
-          image_url: `data:${block.source.media_type};base64,${block.source.data}`,
-        });
+      switch (block.type) {
+        case "text":
+          inlineContent.push(
+            m.role === "assistant"
+              ? { type: "output_text", text: block.text }
+              : { type: "input_text", text: block.text },
+          );
+          break;
+        case "image":
+          inlineContent.push({ type: "input_image", image_url: imageUrlForBlock(block) });
+          break;
+        case "tool_use":
+          trailingItems.push({
+            type: "function_call",
+            call_id: block.id,
+            name: block.name,
+            arguments:
+              typeof block.input === "string" ? block.input : JSON.stringify(block.input ?? {}),
+          });
+          break;
+        case "tool_result":
+          trailingItems.push({
+            type: "function_call_output",
+            call_id: block.tool_use_id,
+            output: stringifyToolResult(block.content),
+          });
+          break;
+        case "thinking":
+          // Anthropic thinking blocks come with an opaque `signature`. We can't decrypt
+          // it (Anthropic-encrypted) so we just keep the summary text — encrypted_content
+          // round-tripping is handled by our own reasoning cache, not by Claude's signature.
+          leadingItems.push({
+            type: "reasoning",
+            summary: [{ type: "summary_text", text: block.thinking }],
+            encrypted_content: null,
+          });
+          break;
+        case "redacted_thinking":
+          // Anthropic redacted thinking is an opaque blob we can't unwrap; skip.
+          break;
       }
     }
 
-    // Add message with content parts
-    if (contentParts.length > 0) {
-      items.push({
-        type: "message",
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: contentParts,
-      });
+    if (leadingItems.length) out.push(...leadingItems);
+    if (inlineContent.length) {
+      out.push({ type: "message", role: m.role, content: inlineContent });
     }
-
-    // Add function calls as separate items
-    for (const fc of functionCalls) {
-      items.push(fc);
-    }
-
-    // Add function outputs as separate items
-    for (const fo of functionOutputs) {
-      items.push(fo);
-    }
+    if (trailingItems.length) out.push(...trailingItems);
   }
 
-  return items;
+  return out;
 }
 
-// ── Main adapter ──────────────────────────────────────────────────────
+// ── Reasoning effort mapping ─────────────────────────────────────────
+
+function reasoningEffort(level?: ReasoningLevel): "low" | "medium" | "high" | "xhigh" {
+  if (level) return level;
+  const env = (process.env.CODEX_REASONING_EFFORT || "").toLowerCase();
+  if (env === "low" || env === "medium" || env === "high" || env === "xhigh") return env;
+  return "high";
+}
+
+function reasoningSummary(): "auto" | "concise" | "detailed" | null {
+  const env = (process.env.CODEX_REASONING_SUMMARY || "").toLowerCase();
+  if (env === "concise" || env === "detailed" || env === "auto") return env;
+  if (env === "none") return null;
+  return "auto";
+}
+
+function textVerbosity(): "low" | "medium" | "high" | undefined {
+  const env = (process.env.CODEX_TEXT_VERBOSITY || "").toLowerCase();
+  if (env === "low" || env === "medium" || env === "high") return env;
+  return undefined;
+}
+
+// ── Main adapter ─────────────────────────────────────────────────────
 
 export async function chatCodexOAuth(
   res: FastifyReply,
@@ -119,530 +263,447 @@ export async function chatCodexOAuth(
   apiKey?: string,
   reasoning?: ReasoningLevel,
 ) {
-  function sendSSEError(msg: string) {
-    try {
-      const id = `msg_${Date.now()}`;
-      res.raw.write(
-        `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id, type: "message", role: "assistant", model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } } })}\n\n`,
-      );
-      res.raw.write(
-        `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } })}\n\n`,
-      );
-      res.raw.write(
-        `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: `[Codex OAuth Error] ${msg}` } })}\n\n`,
-      );
-      res.raw.write(
-        `event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: 0 })}\n\n`,
-      );
-      res.raw.write(
-        `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 0 } })}\n\n`,
-      );
-      res.raw.write(
-        `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`,
-      );
-    } catch {
-      /* stream closed */
-    }
-    try {
-      res.raw.end();
-    } catch {}
-  }
-
   try {
-    return await _chatCodexOAuthInner(res, body, model, apiKey, reasoning);
-  } catch (e: any) {
-    console.error(`[codex] ERROR: ${e.message}`);
-    sendSSEError(e.message);
+    await chatCodexOAuthInner(res, body, model, apiKey, reasoning);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[codex] ERROR: ${message}`);
+    emitErrorAsSse(res, model, message);
   }
 }
 
-async function _chatCodexOAuthInner(
+function emitErrorAsSse(res: FastifyReply, model: string, message: string) {
+  if (res.raw.writableEnded) return;
+  try {
+    const id = `msg_${Date.now()}`;
+    sendEvent(res, "message_start", {
+      type: "message_start",
+      message: {
+        id,
+        type: "message",
+        role: "assistant",
+        model,
+        content: [],
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      },
+    });
+    sendEvent(res, "content_block_start", {
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "text", text: "" },
+    });
+    sendEvent(res, "content_block_delta", {
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "text_delta", text: `[codex proxy error] ${message}` },
+    });
+    sendEvent(res, "content_block_stop", { type: "content_block_stop", index: 0 });
+    sendEvent(res, "message_delta", {
+      type: "message_delta",
+      delta: { stop_reason: "end_turn", stop_sequence: null },
+      usage: { output_tokens: 0 },
+    });
+    sendEvent(res, "message_stop", { type: "message_stop" });
+    res.raw.end();
+  } catch {
+    /* stream already closed */
+  }
+}
+
+async function chatCodexOAuthInner(
   res: FastifyReply,
   body: AnthropicRequest,
   model: string,
   apiKey?: string,
   reasoning?: ReasoningLevel,
 ) {
-  const accessToken = apiKey || (await getCodexAccessToken());
-
-  // OAuth tokens use ChatGPT backend (Responses API), API keys use standard API
   const isOAuth = !apiKey;
+  const accessToken = apiKey ?? (await getCodexAccessToken());
   const url = isOAuth
     ? `${CHATGPT_CODEX_BASE}/responses`
-    : `${OPENAI_API_BASE}/chat/completions`;
+    : `${OPENAI_API_BASE}/responses`;
 
-  const hasTools = body.tools && body.tools.length > 0;
+  const convoKey = conversationKey(body.messages);
+  const cachedReasoning = reasoningItems(convoKey) as ResponseItem[];
+  const promptCacheKey = threadIdFor(convoKey);
 
-  // Reasoning effort
-  const EFFORT_MAP: Record<string, string> = {
-    low: "low",
-    medium: "medium",
-    high: "high",
-    xhigh: "xhigh",
+  const input = toResponsesInput(body.messages, cachedReasoning);
+  const tools = toResponsesTools(body.tools);
+  const verbosity = textVerbosity();
+  const summary = reasoningSummary();
+
+  // ── Build request body (matches ResponsesApiRequest in codex-rs/codex-api/src/common.rs) ──
+  const reqBody: Record<string, unknown> = {
+    model,
+    instructions: flattenSystem(body.system),
+    input,
+    tools,
+    tool_choice: toResponsesToolChoice(body.tool_choice),
+    parallel_tool_calls: false,
+    reasoning: { effort: reasoningEffort(reasoning), ...(summary ? { summary } : {}) },
+    store: false,
+    stream: true,
+    include: ["reasoning.encrypted_content"],
+    prompt_cache_key: promptCacheKey,
   };
-  const reasoningEffort =
-    EFFORT_MAP[reasoning || ""] || process.env.CODEX_REASONING_EFFORT || "high";
+  if (verbosity) reqBody.text = { verbosity };
 
-  let reqBody: any;
-
-  if (isOAuth) {
-    // ── Responses API format ──
-    const input = toResponsesInput(body.messages);
-    const tools: any[] = hasTools ? toResponsesTools(body.tools!) : [];
-
-    // Add web search tool (ChatGPT backend uses "web_search")
-    tools.push({ type: "web_search" });
-
-    // system can be a string or array of {type:"text",text:"..."} objects
-    const instructions = Array.isArray(body.system)
-      ? (body.system as any[]).map((b: any) => b.text ?? "").join("\n")
-      : (body.system || "");
-
-    reqBody = {
-      model,
-      instructions,
-      input,
-      tools,
-      stream: true,
-      store: false, // Required by ChatGPT backend
-      reasoning: { effort: reasoningEffort, summary: "auto" },
-    };
-    // Note: ChatGPT backend does NOT support max_output_tokens
-
-    console.log(
-      `[codex] Responses API | model="${model}" input_items=${input.length} tools=${tools.length} reasoning=${reasoningEffort} web_search=on`,
-    );
-  } else {
-    // ── Chat Completions API (for API key users) ──
-    const messages = toOpenAIMessagesFromAnthropic(body.messages);
-    if (body.system) {
-      const sysText = Array.isArray(body.system)
-        ? (body.system as any[]).map((b: any) => b.text ?? "").join("\n")
-        : body.system;
-      messages.unshift({ role: "system", content: sysText });
-    }
-
-    reqBody = {
-      model,
-      messages,
-      stream: true,
-      temperature: body.temperature ?? 0.7,
-      max_tokens: body.max_tokens,
-      web_search_options: { search_context_size: "medium" },
-    };
-
-    if (hasTools) {
-      reqBody.tools = body.tools!.map((t) => ({
-        type: "function" as const,
-        function: {
-          name: t.name,
-          description: t.description ?? "",
-          parameters: t.input_schema ?? { type: "object", properties: {} },
-        },
-      }));
-    }
-
-    if (
-      model.includes("codex") ||
-      model.includes("gpt-5") ||
-      model.includes("o3") ||
-      model.includes("o4")
-    ) {
-      reqBody.reasoning_effort = reasoningEffort;
-    }
-
-    console.log(
-      `[codex] Chat Completions | model="${model}" messages=${messages.length} tools=${hasTools ? body.tools!.length : 0}`,
-    );
+  const installId = installationId();
+  if (installId) {
+    reqBody.client_metadata = { "x-codex-installation-id": installId };
   }
 
+  // ── Headers ──
   const headers: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
     "Content-Type": "application/json",
+    Accept: "text/event-stream",
+    originator: DEFAULT_ORIGINATOR,
+    "User-Agent": codexUserAgent(),
+    "OpenAI-Beta": "responses=experimental",
   };
-
+  if (installId) headers["x-codex-installation-id"] = installId;
   if (isOAuth) {
-    // ChatGPT backend requires these headers (matches Codex CLI behavior)
-    headers["originator"] = "codex_cli_rs";
-    headers["User-Agent"] =
-      `codex_cli_rs/0.1.0 (${process.platform}; ${process.arch})`;
-    headers["Accept"] = "text/event-stream";
-    // ChatGPT-Account-ID is required for routing to the correct workspace
     const accountId = getCodexAccountId();
-    if (accountId) {
-      headers["ChatGPT-Account-ID"] = accountId;
-    }
+    if (accountId) headers["ChatGPT-Account-ID"] = accountId;
   }
 
-  const resp = await fetch(url, {
+  console.log(
+    `[codex] ${isOAuth ? "ChatGPT" : "API"} | model="${model}" items=${input.length} tools=${tools.length} reasoning=${reasoningEffort(reasoning)} cache=${cachedReasoning.length}`,
+  );
+
+  const upstream = await fetch(url, {
     method: "POST",
     headers,
     body: JSON.stringify(reqBody),
   });
 
-  if (!resp.ok || !resp.body) {
-    const text = await safeText(resp);
-    console.error(`[codex] API error ${resp.status}: ${text}`);
-    throw new Error(
-      `OpenAI API returned ${resp.status}: ${text.slice(0, 300)}`,
-    );
+  if (!upstream.ok || !upstream.body) {
+    const text = await upstream.text().catch(() => "<no-body>");
+    throw new Error(`OpenAI ${upstream.status}: ${text.slice(0, 500)}`);
   }
 
-  // ── Stream response and convert to Anthropic SSE format ────────────
+  await pumpResponsesStream(res, upstream.body, model, convoKey);
+}
 
-  const msgId = `msg_${Date.now()}`;
-  let contentIndex = 0;
-  let hasStartedMessage = false;
-  let hasStartedThinking = false;
-  let hasStartedContent = false;
+// ── SSE pump: Responses API events → Anthropic SSE events ────────────
 
-  // For Responses API: track function calls by output_index
-  const pendingFunctionCalls: Record<
-    number,
-    { id: string; name: string; arguments: string }
-  > = {};
-  // For Chat Completions: track tool calls by index
-  const pendingToolCalls: Record<
-    number,
-    { id: string; name: string; arguments: string }
-  > = {};
+type StreamState = {
+  msgId: string;
+  messageStarted: boolean;
+  thinkingOpen: boolean;
+  textOpen: boolean;
+  blockIndex: number;
+  funcCallByItemId: Map<string, { blockIndex: number; name: string; callId: string }>;
+  newReasoningItems: ReasoningResponseItem[];
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  stopReason: "end_turn" | "tool_use" | "max_tokens" | "stop_sequence";
+};
 
-  function ensureMessageStarted() {
-    if (!hasStartedMessage) {
-      hasStartedMessage = true;
-      sendEvent(res, "message_start", {
-        type: "message_start",
-        message: {
-          id: msgId,
-          type: "message",
-          role: "assistant",
-          model,
-          content: [],
-          stop_reason: null,
-          stop_sequence: null,
-          usage: { input_tokens: 0, output_tokens: 0 },
-        },
-      });
-    }
-  }
+function makeState(): StreamState {
+  return {
+    msgId: `msg_${Date.now()}`,
+    messageStarted: false,
+    thinkingOpen: false,
+    textOpen: false,
+    blockIndex: 0,
+    funcCallByItemId: new Map(),
+    newReasoningItems: [],
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+    stopReason: "end_turn",
+  };
+}
 
-  function ensureThinkingBlockStarted() {
-    if (!hasStartedThinking) {
-      hasStartedThinking = true;
-      ensureMessageStarted();
-      sendEvent(res, "content_block_start", {
-        type: "content_block_start",
-        index: contentIndex,
-        content_block: { type: "thinking", thinking: "" },
-      });
-    }
-  }
+function ensureMessageStarted(res: FastifyReply, s: StreamState, model: string) {
+  if (s.messageStarted) return;
+  s.messageStarted = true;
+  sendEvent(res, "message_start", {
+    type: "message_start",
+    message: {
+      id: s.msgId,
+      type: "message",
+      role: "assistant",
+      model,
+      content: [],
+      stop_reason: null,
+      stop_sequence: null,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    },
+  });
+}
 
-  function closeThinkingBlock() {
-    if (hasStartedThinking) {
-      sendEvent(res, "content_block_stop", {
-        type: "content_block_stop",
-        index: contentIndex,
-      });
-      contentIndex++;
-      hasStartedThinking = false;
-    }
-  }
+function openThinking(res: FastifyReply, s: StreamState, model: string) {
+  if (s.thinkingOpen) return;
+  ensureMessageStarted(res, s, model);
+  closeText(res, s);
+  s.thinkingOpen = true;
+  sendEvent(res, "content_block_start", {
+    type: "content_block_start",
+    index: s.blockIndex,
+    content_block: { type: "thinking", thinking: "" },
+  });
+}
 
-  function ensureContentBlockStarted() {
-    if (!hasStartedContent) {
-      closeThinkingBlock();
-      hasStartedContent = true;
-      ensureMessageStarted();
-      sendEvent(res, "content_block_start", {
-        type: "content_block_start",
-        index: contentIndex,
-        content_block: { type: "text", text: "" },
-      });
-    }
-  }
+function closeThinking(res: FastifyReply, s: StreamState) {
+  if (!s.thinkingOpen) return;
+  sendEvent(res, "content_block_stop", { type: "content_block_stop", index: s.blockIndex });
+  s.thinkingOpen = false;
+  s.blockIndex += 1;
+}
 
-  function closeContentBlock() {
-    if (hasStartedContent) {
-      sendEvent(res, "content_block_stop", {
-        type: "content_block_stop",
-        index: contentIndex,
-      });
-      contentIndex++;
-      hasStartedContent = false;
-    }
-  }
+function openText(res: FastifyReply, s: StreamState, model: string) {
+  if (s.textOpen) return;
+  ensureMessageStarted(res, s, model);
+  closeThinking(res, s);
+  s.textOpen = true;
+  sendEvent(res, "content_block_start", {
+    type: "content_block_start",
+    index: s.blockIndex,
+    content_block: { type: "text", text: "" },
+  });
+}
 
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
+function closeText(res: FastifyReply, s: StreamState) {
+  if (!s.textOpen) return;
+  sendEvent(res, "content_block_stop", { type: "content_block_stop", index: s.blockIndex });
+  s.textOpen = false;
+  s.blockIndex += 1;
+}
+
+async function pumpResponsesStream(
+  res: FastifyReply,
+  body: ReadableStream<Uint8Array>,
+  model: string,
+  convoKey: string,
+) {
+  const s = makeState();
 
   const parser = createParser({
-    onEvent(event: EventSourceMessage) {
-      const data = event.data;
-      if (!data || data === "[DONE]") return;
+    onEvent: (ev: EventSourceMessage) => {
+      if (!ev.data || ev.data === "[DONE]") return;
+      let json: Record<string, unknown>;
       try {
-        const json = JSON.parse(data);
-
-        if (isOAuth) {
-          // ── Responses API streaming events ──
-          handleResponsesEvent(json);
-        } else {
-          // ── Chat Completions streaming events ──
-          handleChatCompletionsEvent(json);
-        }
+        json = JSON.parse(ev.data);
       } catch {
-        // ignore parse errors
+        return;
       }
+      handleEvent(res, s, model, json);
     },
   });
 
-  function handleResponsesEvent(json: any) {
-    const type = json.type;
-
-    // Reasoning summary text delta
-    if (type === "response.reasoning_summary_text.delta") {
-      const text = json.delta;
-      if (text) {
-        ensureThinkingBlockStarted();
-        sendEvent(res, "content_block_delta", {
-          type: "content_block_delta",
-          index: contentIndex,
-          delta: { type: "thinking_delta", thinking: text },
-        });
-      }
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      parser.feed(decoder.decode(value, { stream: true }));
     }
-
-    // Output text delta (main response text)
-    if (type === "response.output_text.delta") {
-      const text = json.delta;
-      if (text) {
-        ensureContentBlockStarted();
-        sendEvent(res, "content_block_delta", {
-          type: "content_block_delta",
-          index: contentIndex,
-          delta: { type: "text_delta", text },
-        });
-      }
-    }
-
-    // Function call arguments delta
-    if (type === "response.function_call_arguments.delta") {
-      const idx = json.output_index ?? 0;
-      if (!pendingFunctionCalls[idx]) {
-        pendingFunctionCalls[idx] = { id: "", name: "", arguments: "" };
-      }
-      pendingFunctionCalls[idx].arguments += json.delta || "";
-    }
-
-    // Function call arguments done - capture id and name
-    if (type === "response.function_call_arguments.done") {
-      const idx = json.output_index ?? 0;
-      if (!pendingFunctionCalls[idx]) {
-        pendingFunctionCalls[idx] = { id: "", name: "", arguments: "" };
-      }
-      // Full arguments available
-      if (json.arguments) pendingFunctionCalls[idx].arguments = json.arguments;
-    }
-
-    // Output item added - capture function call metadata
-    if (type === "response.output_item.added") {
-      const item = json.item;
-      if (item?.type === "function_call") {
-        const idx = json.output_index ?? 0;
-        pendingFunctionCalls[idx] = {
-          id: item.call_id || item.id || `call_${Date.now()}`,
-          name: item.name || "",
-          arguments: "",
-        };
-      }
-    }
-
-    // Output item done - finalize function call
-    if (type === "response.output_item.done") {
-      const item = json.item;
-      if (item?.type === "function_call") {
-        const idx = json.output_index ?? 0;
-        if (pendingFunctionCalls[idx]) {
-          pendingFunctionCalls[idx].id =
-            item.call_id || item.id || pendingFunctionCalls[idx].id;
-          pendingFunctionCalls[idx].name =
-            item.name || pendingFunctionCalls[idx].name;
-          if (item.arguments)
-            pendingFunctionCalls[idx].arguments = item.arguments;
-        }
-      }
-    }
-
-    // Web search call - log it
-    if (
-      type === "response.output_item.added" &&
-      json.item?.type === "web_search_call"
-    ) {
-      console.log(
-        `[codex] Web search: ${JSON.stringify(json.item.action || {})}`,
-      );
-    }
+  } finally {
+    finalize(res, s, model, convoKey);
   }
+}
 
-  function handleChatCompletionsEvent(json: any) {
-    const choice = json.choices?.[0];
-    if (!choice) return;
-    const delta = choice.delta;
-    if (!delta) return;
-
-    // Handle reasoning/thinking tokens
-    const reasoningChunk = delta.reasoning || delta.reasoning_content || "";
-    if (reasoningChunk) {
-      ensureThinkingBlockStarted();
-      sendEvent(res, "content_block_delta", {
-        type: "content_block_delta",
-        index: contentIndex,
-        delta: { type: "thinking_delta", thinking: reasoningChunk },
-      });
-    }
-
-    // Handle text content
-    const textChunk = delta.content || "";
-    if (textChunk) {
-      ensureContentBlockStarted();
-      sendEvent(res, "content_block_delta", {
-        type: "content_block_delta",
-        index: contentIndex,
-        delta: { type: "text_delta", text: textChunk },
-      });
-    }
-
-    // Handle streaming tool calls
-    if (delta.tool_calls) {
-      for (const tc of delta.tool_calls) {
-        const idx = tc.index ?? 0;
-        if (!pendingToolCalls[idx]) {
-          pendingToolCalls[idx] = { id: "", name: "", arguments: "" };
-        }
-        if (tc.id) pendingToolCalls[idx].id = tc.id;
-        if (tc.function?.name) pendingToolCalls[idx].name += tc.function.name;
-        if (tc.function?.arguments)
-          pendingToolCalls[idx].arguments += tc.function.arguments;
-      }
-    }
+function finalize(res: FastifyReply, s: StreamState, model: string, convoKey: string) {
+  ensureMessageStarted(res, s, model);
+  closeThinking(res, s);
+  closeText(res, s);
+  for (const { blockIndex } of s.funcCallByItemId.values()) {
+    sendEvent(res, "content_block_stop", { type: "content_block_stop", index: blockIndex });
   }
+  s.funcCallByItemId.clear();
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    parser.feed(decoder.decode(value, { stream: true }));
-  }
-
-  // ── Finalize ────────────────────────────────────────────────────────
-
-  ensureMessageStarted();
-  closeThinkingBlock();
-  closeContentBlock();
-
-  // Emit tool_use blocks from either API format
-  const allToolCalls = isOAuth
-    ? Object.values(pendingFunctionCalls)
-    : Object.values(pendingToolCalls);
-
-  if (allToolCalls.length > 0) {
-    for (const tc of allToolCalls) {
-      sendEvent(res, "content_block_start", {
-        type: "content_block_start",
-        index: contentIndex,
-        content_block: {
-          type: "tool_use",
-          id: tc.id,
-          name: tc.name,
-          input: {},
-        },
-      });
-
-      sendEvent(res, "content_block_delta", {
-        type: "content_block_delta",
-        index: contentIndex,
-        delta: {
-          type: "input_json_delta",
-          partial_json: tc.arguments,
-        },
-      });
-
-      sendEvent(res, "content_block_stop", {
-        type: "content_block_stop",
-        index: contentIndex,
-      });
-
-      contentIndex++;
-    }
-  }
-
-  const stopReason = allToolCalls.length > 0 ? "tool_use" : "end_turn";
+  if (s.newReasoningItems.length) setReasoningItems(convoKey, s.newReasoningItems);
 
   sendEvent(res, "message_delta", {
     type: "message_delta",
-    delta: { stop_reason: stopReason, stop_sequence: null },
-    usage: { output_tokens: 0 },
+    delta: { stop_reason: s.stopReason, stop_sequence: null },
+    usage: {
+      input_tokens: s.inputTokens,
+      output_tokens: s.outputTokens,
+      cache_creation_input_tokens: s.cacheCreationInputTokens,
+      cache_read_input_tokens: s.cacheReadInputTokens,
+    },
   });
   sendEvent(res, "message_stop", { type: "message_stop" });
-
-  res.raw.end();
+  if (!res.raw.writableEnded) res.raw.end();
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+function handleEvent(
+  res: FastifyReply,
+  s: StreamState,
+  model: string,
+  json: Record<string, unknown>,
+) {
+  const type = json.type as string | undefined;
+  if (!type) return;
 
-/** Simple Anthropic → OpenAI Chat Completions message converter (for API key mode) */
-function toOpenAIMessagesFromAnthropic(messages: AnthropicMessage[]) {
-  const out: any[] = [];
-  for (const m of messages) {
-    if (typeof m.content === "string") {
-      out.push({ role: m.role, content: m.content });
-      continue;
+  switch (type) {
+    case "response.created":
+      ensureMessageStarted(res, s, model);
+      return;
+
+    case "response.output_text.delta": {
+      const delta = json.delta as string | undefined;
+      if (!delta) return;
+      openText(res, s, model);
+      sendEvent(res, "content_block_delta", {
+        type: "content_block_delta",
+        index: s.blockIndex,
+        delta: { type: "text_delta", text: delta },
+      });
+      return;
     }
-    const textParts: string[] = [];
-    const toolCalls: any[] = [];
-    const toolResults: any[] = [];
-    for (const block of m.content as AnthropicContentBlock[]) {
-      if (block.type === "text") textParts.push(block.text);
-      else if (block.type === "tool_use") {
-        toolCalls.push({
-          id: block.id,
-          type: "function",
-          function: {
-            name: block.name,
-            arguments:
-              typeof block.input === "string"
-                ? block.input
-                : JSON.stringify(block.input),
-          },
-        });
-      } else if (block.type === "tool_result") {
-        toolResults.push({
-          role: "tool",
-          tool_call_id: block.tool_use_id,
-          content:
-            typeof block.content === "string"
-              ? block.content
-              : JSON.stringify(block.content),
+
+    case "response.reasoning_summary_text.delta":
+    case "response.reasoning_text.delta": {
+      const delta = json.delta as string | undefined;
+      if (!delta) return;
+      openThinking(res, s, model);
+      sendEvent(res, "content_block_delta", {
+        type: "content_block_delta",
+        index: s.blockIndex,
+        delta: { type: "thinking_delta", thinking: delta },
+      });
+      return;
+    }
+
+    case "response.reasoning_summary_part.added":
+      // Soft paragraph break between summary parts to keep them readable inside one thinking block.
+      if (s.thinkingOpen) {
+        sendEvent(res, "content_block_delta", {
+          type: "content_block_delta",
+          index: s.blockIndex,
+          delta: { type: "thinking_delta", thinking: "\n\n" },
         });
       }
-    }
-    if (m.role === "assistant" && toolCalls.length > 0) {
-      out.push({
-        role: "assistant",
-        content: textParts.join("") || null,
-        tool_calls: toolCalls,
-      });
-    } else if (textParts.length > 0) {
-      out.push({ role: m.role, content: textParts.join("") });
-    }
-    for (const tr of toolResults) out.push(tr);
-  }
-  return out;
-}
+      return;
 
-async function safeText(resp: Response) {
-  try {
-    return await resp.text();
-  } catch {
-    return "<no-body>";
+    case "response.output_item.added": {
+      const item = json.item as
+        | { type?: string; id?: string; call_id?: string; name?: string }
+        | undefined;
+      if (!item) return;
+      if (item.type === "function_call") {
+        ensureMessageStarted(res, s, model);
+        closeText(res, s);
+        closeThinking(res, s);
+        const callId = item.call_id || item.id || `call_${Date.now()}`;
+        const name = item.name || "";
+        s.funcCallByItemId.set(item.id || callId, {
+          blockIndex: s.blockIndex,
+          name,
+          callId,
+        });
+        sendEvent(res, "content_block_start", {
+          type: "content_block_start",
+          index: s.blockIndex,
+          content_block: { type: "tool_use", id: callId, name, input: {} },
+        });
+        s.blockIndex += 1;
+        s.stopReason = "tool_use";
+      } else if (item.type === "web_search_call") {
+        console.log(`[codex] web_search invoked`);
+      }
+      return;
+    }
+
+    case "response.function_call_arguments.delta": {
+      const itemId = (json.item_id || json.id) as string | undefined;
+      const delta = json.delta as string | undefined;
+      if (!itemId || !delta) return;
+      const entry = s.funcCallByItemId.get(itemId);
+      if (!entry) return;
+      sendEvent(res, "content_block_delta", {
+        type: "content_block_delta",
+        index: entry.blockIndex,
+        delta: { type: "input_json_delta", partial_json: delta },
+      });
+      return;
+    }
+
+    case "response.function_call_arguments.done":
+      // Full arguments string is already streamed via deltas. output_item.done closes the block.
+      return;
+
+    case "response.output_item.done": {
+      const item = json.item as
+        | {
+            type?: string;
+            id?: string;
+            call_id?: string;
+            name?: string;
+            arguments?: string;
+            summary?: Array<{ type: string; text: string }>;
+            encrypted_content?: string | null;
+          }
+        | undefined;
+      if (!item) return;
+
+      if (item.type === "function_call") {
+        const itemId = item.id || item.call_id || "";
+        const entry = s.funcCallByItemId.get(itemId);
+        if (entry) {
+          sendEvent(res, "content_block_stop", {
+            type: "content_block_stop",
+            index: entry.blockIndex,
+          });
+          s.funcCallByItemId.delete(itemId);
+        }
+      } else if (item.type === "reasoning") {
+        s.newReasoningItems.push({
+          type: "reasoning",
+          summary: (item.summary ?? []).map((p) => ({
+            type: "summary_text",
+            text: p.text,
+          })),
+          encrypted_content: item.encrypted_content ?? null,
+        });
+      }
+      return;
+    }
+
+    case "response.completed": {
+      const resp = json.response as
+        | {
+            usage?: {
+              input_tokens?: number;
+              output_tokens?: number;
+              input_tokens_details?: { cached_tokens?: number };
+            };
+            end_turn?: boolean;
+          }
+        | undefined;
+      const u = resp?.usage;
+      if (u) {
+        s.inputTokens = u.input_tokens ?? 0;
+        s.outputTokens = u.output_tokens ?? 0;
+        s.cacheReadInputTokens = u.input_tokens_details?.cached_tokens ?? 0;
+      }
+      return;
+    }
+
+    case "response.failed":
+    case "response.incomplete": {
+      const resp = json.response as
+        | { error?: { message?: string }; incomplete_details?: { reason?: string } }
+        | undefined;
+      const msg =
+        resp?.error?.message ||
+        resp?.incomplete_details?.reason ||
+        `Codex returned ${type}`;
+      throw new Error(msg);
+    }
+
+    default:
+      return;
   }
 }

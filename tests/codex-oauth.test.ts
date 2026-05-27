@@ -313,6 +313,132 @@ describe("parseProviderModel — codex tier shortcuts", () => {
   });
 });
 
+describe("SSE aggregator", () => {
+  it("collapses a streamed message into a non-streaming Anthropic Messages response", async () => {
+    const { withAggregatedReply } = await import("../adapters/sse-aggregator.js");
+    let captured = "";
+    const fakeReply = {
+      raw: {
+        setHeader: () => {},
+        end: (body: string) => {
+          captured = body;
+        },
+      },
+    } as unknown as import("fastify").FastifyReply;
+
+    await withAggregatedReply(fakeReply, async (bufRes) => {
+      const w = (event: string, data: unknown) => {
+        bufRes.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+      w("message_start", {
+        type: "message_start",
+        message: {
+          id: "msg_test",
+          type: "message",
+          role: "assistant",
+          model: "gpt-5.5",
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 100, output_tokens: 0 },
+        },
+      });
+      w("content_block_start", {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "text", text: "" },
+      });
+      w("content_block_delta", {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: "Hello" },
+      });
+      w("content_block_delta", {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "text_delta", text: " world" },
+      });
+      w("content_block_stop", { type: "content_block_stop", index: 0 });
+      w("message_delta", {
+        type: "message_delta",
+        delta: { stop_reason: "end_turn", stop_sequence: null },
+        usage: { input_tokens: 100, output_tokens: 2 },
+      });
+      w("message_stop", { type: "message_stop" });
+      bufRes.raw.end();
+    });
+
+    const parsed = JSON.parse(captured);
+    expect(parsed).toMatchObject({
+      id: "msg_test",
+      type: "message",
+      role: "assistant",
+      model: "gpt-5.5",
+      content: [{ type: "text", text: "Hello world" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 100, output_tokens: 2 },
+    });
+  });
+
+  it("aggregates a tool_use block from streamed input_json_delta chunks", async () => {
+    const { withAggregatedReply } = await import("../adapters/sse-aggregator.js");
+    let captured = "";
+    const fakeReply = {
+      raw: { setHeader: () => {}, end: (b: string) => { captured = b; } },
+    } as unknown as import("fastify").FastifyReply;
+
+    await withAggregatedReply(fakeReply, async (bufRes) => {
+      const w = (event: string, data: unknown) => {
+        bufRes.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+      w("message_start", {
+        type: "message_start",
+        message: {
+          id: "msg_x",
+          type: "message",
+          role: "assistant",
+          model: "gpt-5.5",
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 0, output_tokens: 0 },
+        },
+      });
+      w("content_block_start", {
+        type: "content_block_start",
+        index: 0,
+        content_block: { type: "tool_use", id: "toolu_1", name: "Bash", input: {} },
+      });
+      w("content_block_delta", {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "input_json_delta", partial_json: '{"cmd":' },
+      });
+      w("content_block_delta", {
+        type: "content_block_delta",
+        index: 0,
+        delta: { type: "input_json_delta", partial_json: '"ls"}' },
+      });
+      w("content_block_stop", { type: "content_block_stop", index: 0 });
+      w("message_delta", {
+        type: "message_delta",
+        delta: { stop_reason: "tool_use", stop_sequence: null },
+        usage: { input_tokens: 5, output_tokens: 3 },
+      });
+      bufRes.raw.end();
+    });
+
+    const parsed = JSON.parse(captured);
+    expect(parsed.content[0]).toEqual({
+      type: "tool_use",
+      id: "toolu_1",
+      name: "Bash",
+      input: { cmd: "ls" },
+    });
+    expect(parsed.stop_reason).toBe("tool_use");
+  });
+});
+
 describe("conversationKey + threadIdFor", () => {
   it("returns the same key for the same first user turn", () => {
     const a = conversationKey([{ role: "user", content: "hello world" }]);

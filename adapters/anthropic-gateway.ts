@@ -7,6 +7,7 @@ import { chatGeminiOAuth } from "./providers/gemini-oauth.js";
 import { chatCodexOAuth } from "./providers/codex-oauth.js";
 import { passThrough } from "./providers/anthropic-pass.js";
 import { preprocessImages } from "./vision-preprocess.js";
+import { withAggregatedReply } from "./sse-aggregator.js";
 import {
   buildLoginUrl,
   handleOAuthCallback,
@@ -309,18 +310,29 @@ fastify.post("/v1/messages", async (req, res) => {
       active = { provider, model };
     }
 
+    // When the client passes `stream: false` (e.g. Claude Code's /model validation probe)
+    // we still run the same SSE-emitting adapter, but buffer its output and return a
+    // single Anthropic Messages JSON response. Streaming requests bypass the aggregator.
+    const wantsStream = body.stream !== false;
+    const runStreaming = async (handler: (r: typeof res) => Promise<unknown>) => {
+      if (wantsStream) {
+        res.raw.setHeader("Content-Type", "text/event-stream");
+        res.raw.setHeader("Cache-Control", "no-cache, no-transform");
+        res.raw.setHeader("Connection", "keep-alive");
+        // @ts-ignore
+        res.raw.flushHeaders?.();
+        return handler(res);
+      }
+      return withAggregatedReply(res, (bufRes) => handler(bufRes as typeof res));
+    };
+
     // Validate API keys BEFORE setting headers
     if (provider === "openai") {
       const key = process.env.OPENAI_API_KEY;
       if (!key) {
         throw apiError(401, "OPENAI_API_KEY not set in ~/.claude-proxy/.env");
       }
-      res.raw.setHeader("Content-Type", "text/event-stream");
-      res.raw.setHeader("Cache-Control", "no-cache, no-transform");
-      res.raw.setHeader("Connection", "keep-alive");
-      // @ts-ignore
-      res.raw.flushHeaders?.();
-      return chatCodexOAuth(res, body, model, key, reasoning);
+      return runStreaming((r) => chatCodexOAuth(r, body, model, key, reasoning));
     }
 
     if (provider === "openrouter") {
@@ -328,30 +340,15 @@ fastify.post("/v1/messages", async (req, res) => {
       if (!key) {
         throw apiError(401, "OPENROUTER_API_KEY not set in ~/.claude-proxy/.env");
       }
-      res.raw.setHeader("Content-Type", "text/event-stream");
-      res.raw.setHeader("Cache-Control", "no-cache, no-transform");
-      res.raw.setHeader("Connection", "keep-alive");
-      // @ts-ignore
-      res.raw.flushHeaders?.();
-      return chatOpenRouter(res, body, model, key);
+      return runStreaming((r) => chatOpenRouter(r, body, model, key));
     }
 
     if (provider === "gemini-oauth") {
-      res.raw.setHeader("Content-Type", "text/event-stream");
-      res.raw.setHeader("Cache-Control", "no-cache, no-transform");
-      res.raw.setHeader("Connection", "keep-alive");
-      // @ts-ignore
-      res.raw.flushHeaders?.();
-      return chatGeminiOAuth(res, body, model, undefined, reasoning);
+      return runStreaming((r) => chatGeminiOAuth(r, body, model, undefined, reasoning));
     }
 
     if (provider === "codex-oauth") {
-      res.raw.setHeader("Content-Type", "text/event-stream");
-      res.raw.setHeader("Cache-Control", "no-cache, no-transform");
-      res.raw.setHeader("Connection", "keep-alive");
-      // @ts-ignore
-      res.raw.flushHeaders?.();
-      return chatCodexOAuth(res, body, model, undefined, reasoning);
+      return runStreaming((r) => chatCodexOAuth(r, body, model, undefined, reasoning));
     }
 
     if (provider === "gemini") {
@@ -359,12 +356,7 @@ fastify.post("/v1/messages", async (req, res) => {
       if (!key) {
         throw apiError(401, "GEMINI_API_KEY not set in ~/.claude-proxy/.env");
       }
-      res.raw.setHeader("Content-Type", "text/event-stream");
-      res.raw.setHeader("Cache-Control", "no-cache, no-transform");
-      res.raw.setHeader("Connection", "keep-alive");
-      // @ts-ignore
-      res.raw.flushHeaders?.();
-      return chatGeminiOAuth(res, body, model, key, reasoning);
+      return runStreaming((r) => chatGeminiOAuth(r, body, model, key, reasoning));
     }
 
     if (provider === "anthropic") {

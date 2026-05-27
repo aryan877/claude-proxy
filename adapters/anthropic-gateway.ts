@@ -43,11 +43,28 @@ let active: ProviderModel | null = defaultProvider && defaultModel
 
 const fastify = Fastify({ logger: false, bodyLimit: 100 * 1024 * 1024 });
 
+// Mirror every interesting log line into ~/.claude-proxy/debug.log so we can see
+// it even after the launcher strips pipe listeners on stdout/stderr.
+import { appendFileSync } from "fs";
+const debugLogPath = join(homedir(), ".claude-proxy", "debug.log");
+function dbg(line: string) {
+  const stamped = `[${new Date().toISOString()}] ${line}\n`;
+  try {
+    appendFileSync(debugLogPath, stamped);
+  } catch {}
+  console.log(line);
+}
+
 // Log every incoming request so we can spot validation probes Claude Code sends
 // to endpoints we may not handle (e.g. /v1/messages/count_tokens).
 fastify.addHook("onRequest", async (req) => {
   if (req.url !== "/healthz" && req.url !== "/_status") {
-    console.log(`[ccx] HIT: ${req.method} ${req.url}`);
+    dbg(`[ccx] HIT: ${req.method} ${req.url}`);
+  }
+});
+fastify.addHook("onResponse", async (req, reply) => {
+  if (req.url !== "/healthz" && req.url !== "/_status") {
+    dbg(`[ccx] RESP: ${req.method} ${req.url} → ${reply.statusCode}`);
   }
 });
 

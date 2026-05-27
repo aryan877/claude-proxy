@@ -43,57 +43,6 @@ let active: ProviderModel | null = defaultProvider && defaultModel
 
 const fastify = Fastify({ logger: false, bodyLimit: 100 * 1024 * 1024 });
 
-// Mirror every interesting log line into ~/.claude-proxy/debug.log so we can see
-// it even after the launcher strips pipe listeners on stdout/stderr.
-import { appendFileSync } from "fs";
-const debugLogPath = join(homedir(), ".claude-proxy", "debug.log");
-function dbg(line: string) {
-  const stamped = `[${new Date().toISOString()}] ${line}\n`;
-  try {
-    appendFileSync(debugLogPath, stamped);
-  } catch {}
-  console.log(line);
-}
-
-// Log every incoming request so we can spot validation probes Claude Code sends
-// to endpoints we may not handle (e.g. /v1/messages/count_tokens).
-fastify.addHook("onRequest", async (req) => {
-  if (req.url !== "/healthz" && req.url !== "/_status") {
-    dbg(`[ccx] HIT: ${req.method} ${req.url} headers=${JSON.stringify(req.headers).slice(0, 800)}`);
-  }
-});
-fastify.addHook("onResponse", async (req, reply) => {
-  if (req.url !== "/healthz" && req.url !== "/_status") {
-    dbg(`[ccx] RESP: ${req.method} ${req.url} → ${reply.statusCode} ct=${reply.getHeader("content-type")}`);
-  }
-});
-
-// Intercept raw writes so we can see what payload actually went out.
-fastify.addHook("onRequest", async (req, reply) => {
-  if (req.url === "/healthz" || req.url === "/_status") return;
-  const origWrite = reply.raw.write.bind(reply.raw);
-  const origEnd = reply.raw.end.bind(reply.raw);
-  const chunks: string[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (reply.raw as any).write = function (chunk: string | Uint8Array, ...rest: unknown[]) {
-    const s = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8");
-    chunks.push(s);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return origWrite(chunk, ...(rest as any));
-  };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (reply.raw as any).end = function (chunk?: string | Uint8Array, ...rest: unknown[]) {
-    if (chunk) {
-      const s = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8");
-      chunks.push(s);
-    }
-    const full = chunks.join("");
-    dbg(`[ccx] RESP-BODY ${req.url} (${full.length}B) HEAD: ${full.slice(0, 800)}`);
-    dbg(`[ccx] RESP-BODY ${req.url} TAIL: ${full.slice(Math.max(0, full.length - 1500))}`);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return origEnd(chunk, ...(rest as any));
-  };
-});
 
 // startedAt captured at module load = process birth time
 const startedAt = Date.now();
@@ -332,14 +281,7 @@ fastify.post("/v1/messages", async (req, res) => {
     const tools = body.tools?.map((t: any) => t.name).join(",") || "none";
     const hasSystem = !!body.system;
     const msgCount = body.messages?.length || 0;
-    console.log(`[ccx] REQUEST: model="${body.model}" → provider="${provider}" model="${model}"${reasoning ? ` reasoning=${reasoning}` : ""} | tools=[${tools}] system=${hasSystem} messages=${msgCount} stream=${body.stream}`);
-    dbg(`[ccx] REQ-BODY: ${JSON.stringify({
-      model: body.model,
-      stream: body.stream,
-      max_tokens: body.max_tokens,
-      messages_count: body.messages?.length,
-      first_msg: body.messages?.[0],
-    }).slice(0, 800)}`);
+    console.log(`[ccx] REQUEST: model="${body.model}" → provider="${provider}" model="${model}"${reasoning ? ` reasoning=${reasoning}` : ""} | tools=[${tools}] system=${hasSystem} messages=${msgCount} stream=${body.stream === true ? "true" : "false"}`);
 
     // Warn if using tools with providers that may not support them
     warnIfTools(body, provider);
@@ -369,10 +311,11 @@ fastify.post("/v1/messages", async (req, res) => {
       active = { provider, model };
     }
 
-    // When the client passes `stream: false` (e.g. Claude Code's /model validation probe)
-    // we still run the same SSE-emitting adapter, but buffer its output and return a
-    // single Anthropic Messages JSON response. Streaming requests bypass the aggregator.
-    const wantsStream = body.stream !== false;
+    // Anthropic's convention: only stream when `stream: true` is explicitly set.
+    // Omitted or false = single JSON response. Claude Code's /model validation probe
+    // omits the field entirely and sends `Accept: application/json`, so it has to
+    // get one JSON message back — not SSE chunks.
+    const wantsStream = body.stream === true;
     const runStreaming = async (handler: (r: typeof res) => Promise<unknown>) => {
       if (wantsStream) {
         res.raw.setHeader("Content-Type", "text/event-stream");

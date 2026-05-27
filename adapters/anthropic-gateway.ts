@@ -88,7 +88,8 @@ fastify.addHook("onRequest", async (req, reply) => {
       chunks.push(s);
     }
     const full = chunks.join("");
-    dbg(`[ccx] RESP-BODY ${req.url} (${full.length}B): ${full.slice(0, 1500)}`);
+    dbg(`[ccx] RESP-BODY ${req.url} (${full.length}B) HEAD: ${full.slice(0, 800)}`);
+    dbg(`[ccx] RESP-BODY ${req.url} TAIL: ${full.slice(Math.max(0, full.length - 1500))}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return origEnd(chunk, ...(rest as any));
   };

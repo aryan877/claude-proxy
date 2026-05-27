@@ -280,7 +280,7 @@ fastify.post("/v1/messages", async (req, res) => {
     const tools = body.tools?.map((t: any) => t.name).join(",") || "none";
     const hasSystem = !!body.system;
     const msgCount = body.messages?.length || 0;
-    console.log(`[ccx] REQUEST: model="${body.model}" → provider="${provider}" model="${model}"${reasoning ? ` reasoning=${reasoning}` : ""} | tools=[${tools}] system=${hasSystem} messages=${msgCount}`);
+    console.log(`[ccx] REQUEST: model="${body.model}" → provider="${provider}" model="${model}"${reasoning ? ` reasoning=${reasoning}` : ""} | tools=[${tools}] system=${hasSystem} messages=${msgCount} stream=${body.stream}`);
 
     // Warn if using tools with providers that may not support them
     warnIfTools(body, provider);

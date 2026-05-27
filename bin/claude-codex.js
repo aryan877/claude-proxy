@@ -95,27 +95,19 @@ async function main() {
   }
   console.log("");
 
-  // Available models — pulled from chatgpt.com/backend-api/codex/models
-  console.log("  Models (use with /model):");
+  // Switch by reasoning level (only model is gpt-5.5, the frontier).
+  console.log("  Model: gpt-5.5  (frontier — complex coding, research, real-world work)");
+  console.log("");
+  console.log("  Switch reasoning level with /model:");
   console.log("  ─────────────────────────────────────────────");
-  console.log("    codex            gpt-5.5             (default — frontier)");
-  console.log("    codex-5.5        gpt-5.5             Frontier coding/research");
-  console.log("    codex-5.4        gpt-5.4             Strong everyday coding");
-  console.log("    codex-5.4-mini   gpt-5.4-mini        Small/fast/cheap");
-  console.log("    codex-5.3        gpt-5.3-codex       Coding-optimized");
-  console.log("    codex-5.2        gpt-5.2             Long-running agents");
-  console.log("    codex-mini       gpt-5.4-mini        Alias for 5.4-mini");
+  console.log("    /model fast      gpt-5.5 @low      Fast, lighter reasoning");
+  console.log("    /model smart     gpt-5.5 @medium   Balanced (OpenAI default)");
+  console.log("    /model deep      gpt-5.5 @high     Deeper reasoning  (proxy default)");
+  console.log("    /model max       gpt-5.5 @xhigh    Top reasoning");
+  console.log("    /model think     gpt-5.5 @xhigh    Alias for max");
   console.log("");
-  console.log("  Short aliases: cx cx55 cx54 cx54m cx53 cx52  /  gpt55 gpt54 gpt54m gpt52");
-  console.log("");
-  console.log("  Reasoning levels (append @level to any model):");
-  console.log("  ─────────────────────────────────────────────");
-  console.log("    @low       Fast responses, lighter reasoning");
-  console.log("    @medium    Balanced (Codex default)");
-  console.log("    @high      Deeper reasoning           (proxy default)");
-  console.log("    @xhigh     Extra-high reasoning");
-  console.log("");
-  console.log("  Examples: /model codex@xhigh   /model codex-5.4-mini@low");
+  console.log("  Also works:  /model codex      (= deep, the default)");
+  console.log("              /model codex@low  /model codex@xhigh  (verbatim @level)");
   console.log("");
 
   // Extra flags

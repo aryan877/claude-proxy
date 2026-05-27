@@ -48,27 +48,17 @@ const MODEL_SHORTCUTS: Record<string, string> = {
   "gemini-25f": "gemini-oauth:gemini-2.5-flash",
   gp: "gemini-oauth:gemini-3.1-pro-preview",
   gf: "gemini-oauth:gemini-3-flash-preview",
-  // Codex OAuth shortcuts (OpenAI ChatGPT Plus subscription)
-  // Live catalog (chatgpt.com/backend-api/codex/models): gpt-5.5, gpt-5.4,
-  // gpt-5.4-mini, gpt-5.3-codex, gpt-5.2. All support low/medium/high/xhigh.
-  codex: "codex-oauth:gpt-5.5",
-  "codex-5.5": "codex-oauth:gpt-5.5",
-  "codex-5.4": "codex-oauth:gpt-5.4",
-  "codex-5.4-mini": "codex-oauth:gpt-5.4-mini",
-  "codex-5.3": "codex-oauth:gpt-5.3-codex",
-  "codex-5.2": "codex-oauth:gpt-5.2",
-  "codex-mini": "codex-oauth:gpt-5.4-mini",
-  "gpt55": "codex-oauth:gpt-5.5",
-  "gpt54": "codex-oauth:gpt-5.4",
-  "gpt54m": "codex-oauth:gpt-5.4-mini",
-  "gpt53c": "codex-oauth:gpt-5.3-codex",
-  "gpt52": "codex-oauth:gpt-5.2",
+  // Codex shortcuts — only gpt-5.5 (the frontier model). Switch by reasoning level.
+  codex: "codex-oauth:gpt-5.5",          // proxy default = high
   cx: "codex-oauth:gpt-5.5",
-  cx55: "codex-oauth:gpt-5.5",
-  cx54: "codex-oauth:gpt-5.4",
-  cx54m: "codex-oauth:gpt-5.4-mini",
-  cx53: "codex-oauth:gpt-5.3-codex",
-  cx52: "codex-oauth:gpt-5.2",
+  gpt55: "codex-oauth:gpt-5.5",
+  "gpt-5.5": "codex-oauth:gpt-5.5",
+  // Reasoning-level shortcuts (override @-suffix not needed)
+  fast: "codex-oauth:gpt-5.5@low",       // quick, lighter reasoning
+  smart: "codex-oauth:gpt-5.5@medium",   // Codex CLI default
+  deep: "codex-oauth:gpt-5.5@high",      // proxy default
+  max: "codex-oauth:gpt-5.5@xhigh",      // top reasoning
+  think: "codex-oauth:gpt-5.5@xhigh",    // alias for max
 };
 
 // When Claude Code internally sends claude-haiku-*/claude-sonnet-* requests
@@ -117,7 +107,19 @@ export function parseProviderModel(
   }
 
   // Expand shortcuts first
-  const expanded = MODEL_SHORTCUTS[rawField.toLowerCase()] || rawField;
+  let expanded = MODEL_SHORTCUTS[rawField.toLowerCase()] || rawField;
+
+  // A shortcut may itself embed an @reasoning suffix (e.g. "fast" → "codex-oauth:gpt-5.5@low").
+  // Re-extract so the suffix doesn't end up in the model slug. An explicit @reasoning typed
+  // by the user wins over one baked into a shortcut.
+  const expandedAtIdx = expanded.lastIndexOf("@");
+  if (expandedAtIdx > 0) {
+    const expandedSuffix = expanded.slice(expandedAtIdx + 1).toLowerCase() as ReasoningLevel;
+    if (VALID_REASONING.includes(expandedSuffix)) {
+      if (!reasoning) reasoning = expandedSuffix;
+      expanded = expanded.slice(0, expandedAtIdx);
+    }
+  }
 
   // Auto-detect Claude models (start with "claude-") → route to anthropic,
   // OR remap to the active provider's equivalent when not using anthropic.

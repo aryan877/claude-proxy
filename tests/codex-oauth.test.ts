@@ -4,6 +4,7 @@ import {
   toResponsesToolChoice,
   toResponsesInput,
 } from "../adapters/providers/codex-oauth.js";
+import { parseProviderModel } from "../adapters/map.js";
 import { conversationKey, threadIdFor } from "../adapters/codex-reasoning-cache.js";
 import type { AnthropicMessage, AnthropicTool } from "../adapters/types.js";
 
@@ -249,6 +250,65 @@ describe("toResponsesInput", () => {
       type: "function_call_output",
       call_id: "toolu_x",
       output: "line 1\nline 2",
+    });
+  });
+});
+
+describe("parseProviderModel — codex tier shortcuts", () => {
+  it("expands codex to gpt-5.5 with no implicit reasoning", () => {
+    expect(parseProviderModel("codex")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.5",
+      reasoning: undefined,
+    });
+  });
+
+  it("expands tier shortcuts to gpt-5.5 plus a baked-in reasoning level", () => {
+    expect(parseProviderModel("fast")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.5",
+      reasoning: "low",
+    });
+    expect(parseProviderModel("smart")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.5",
+      reasoning: "medium",
+    });
+    expect(parseProviderModel("deep")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.5",
+      reasoning: "high",
+    });
+    expect(parseProviderModel("max")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.5",
+      reasoning: "xhigh",
+    });
+    expect(parseProviderModel("think")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.5",
+      reasoning: "xhigh",
+    });
+  });
+
+  it("lets an explicit @level override the level baked into a shortcut", () => {
+    expect(parseProviderModel("fast@xhigh")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.5",
+      reasoning: "xhigh",
+    });
+  });
+
+  it("supports verbatim codex@level syntax", () => {
+    expect(parseProviderModel("codex@xhigh")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.5",
+      reasoning: "xhigh",
+    });
+    expect(parseProviderModel("codex@low")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.5",
+      reasoning: "low",
     });
   });
 });

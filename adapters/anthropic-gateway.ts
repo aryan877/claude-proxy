@@ -64,8 +64,34 @@ fastify.addHook("onRequest", async (req) => {
 });
 fastify.addHook("onResponse", async (req, reply) => {
   if (req.url !== "/healthz" && req.url !== "/_status") {
-    dbg(`[ccx] RESP: ${req.method} ${req.url} → ${reply.statusCode}`);
+    dbg(`[ccx] RESP: ${req.method} ${req.url} → ${reply.statusCode} ct=${reply.getHeader("content-type")}`);
   }
+});
+
+// Intercept raw writes so we can see what payload actually went out.
+fastify.addHook("onRequest", async (req, reply) => {
+  if (req.url === "/healthz" || req.url === "/_status") return;
+  const origWrite = reply.raw.write.bind(reply.raw);
+  const origEnd = reply.raw.end.bind(reply.raw);
+  const chunks: string[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (reply.raw as any).write = function (chunk: string | Uint8Array, ...rest: unknown[]) {
+    const s = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8");
+    chunks.push(s);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return origWrite(chunk, ...(rest as any));
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (reply.raw as any).end = function (chunk?: string | Uint8Array, ...rest: unknown[]) {
+    if (chunk) {
+      const s = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf-8");
+      chunks.push(s);
+    }
+    const full = chunks.join("");
+    dbg(`[ccx] RESP-BODY ${req.url} (${full.length}B): ${full.slice(0, 1500)}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return origEnd(chunk, ...(rest as any));
+  };
 });
 
 // startedAt captured at module load = process birth time
@@ -306,6 +332,13 @@ fastify.post("/v1/messages", async (req, res) => {
     const hasSystem = !!body.system;
     const msgCount = body.messages?.length || 0;
     console.log(`[ccx] REQUEST: model="${body.model}" → provider="${provider}" model="${model}"${reasoning ? ` reasoning=${reasoning}` : ""} | tools=[${tools}] system=${hasSystem} messages=${msgCount} stream=${body.stream}`);
+    dbg(`[ccx] REQ-BODY: ${JSON.stringify({
+      model: body.model,
+      stream: body.stream,
+      max_tokens: body.max_tokens,
+      messages_count: body.messages?.length,
+      first_msg: body.messages?.[0],
+    }).slice(0, 800)}`);
 
     // Warn if using tools with providers that may not support them
     warnIfTools(body, provider);

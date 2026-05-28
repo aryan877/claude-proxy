@@ -108,13 +108,28 @@ export async function launchProxy({ rootDir, provider, model, defaultModel, star
   // Underlying provider supports a bigger context than Claude Code's default 200K
   // (Codex / gpt-5.5 ~ 1M, Gemini 3 Pro ~ 1M). Tell Claude Code so it doesn't
   // auto-compact prematurely. Caller can override via env if they want.
+  //
+  // Claude Code caps AUTO_COMPACT_WINDOW at the model's hardcoded context window —
+  // 200K for unknown model names like "codex" — via Math.min(modelWindow, envValue).
+  // The actual escape hatch is the combo DISABLE_COMPACT=1 + CLAUDE_CODE_MAX_CONTEXT_TOKENS=<n>,
+  // which Claude Code's hP() reads first and returns directly as the model window.
   const claudeEnv = {
     ...process.env,
     ANTHROPIC_BASE_URL: `http://127.0.0.1:${PORT}`,
     ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN || "local-proxy-token",
   };
-  if (contextWindow && !process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) {
-    claudeEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(contextWindow);
+  if (contextWindow) {
+    const win = String(contextWindow);
+    if (!process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) {
+      claudeEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = win;
+    }
+    if (!process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) {
+      claudeEnv.CLAUDE_CODE_MAX_CONTEXT_TOKENS = win;
+    }
+    if (!process.env.DISABLE_COMPACT) {
+      claudeEnv.DISABLE_COMPACT = "1";
+    }
+    console.log(`  Context window: ${(contextWindow / 1e6).toFixed(1)}M tokens (auto-compact disabled)`);
   }
 
   const claude = spawn("claude", claudeArgs, {

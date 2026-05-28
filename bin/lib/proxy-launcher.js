@@ -34,7 +34,7 @@ async function waitForProxy(port, maxWait = 15000) {
  * 2. Stale/zombie process on port?  → Kill it, start fresh
  * 3. Port free?                     → Start new proxy
  */
-export async function launchProxy({ rootDir, provider, model, defaultModel, startedBy, forceRestart = false, extraArgs = [] }) {
+export async function launchProxy({ rootDir, provider, model, defaultModel, startedBy, forceRestart = false, extraArgs = [], contextWindow }) {
   const PORT = Number(process.env.CLAUDE_PROXY_PORT || 17870);
 
   // Step 1: Check if a healthy proxy is already running
@@ -104,13 +104,22 @@ export async function launchProxy({ rootDir, provider, model, defaultModel, star
   console.log("");
 
   const claudeArgs = ["--model", defaultModel, ...extraArgs];
+
+  // Underlying provider supports a bigger context than Claude Code's default 200K
+  // (Codex / gpt-5.5 ~ 1M, Gemini 3 Pro ~ 1M). Tell Claude Code so it doesn't
+  // auto-compact prematurely. Caller can override via env if they want.
+  const claudeEnv = {
+    ...process.env,
+    ANTHROPIC_BASE_URL: `http://127.0.0.1:${PORT}`,
+    ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN || "local-proxy-token",
+  };
+  if (contextWindow && !process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) {
+    claudeEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(contextWindow);
+  }
+
   const claude = spawn("claude", claudeArgs, {
     stdio: "inherit",
-    env: {
-      ...process.env,
-      ANTHROPIC_BASE_URL: `http://127.0.0.1:${PORT}`,
-      ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN || "local-proxy-token",
-    },
+    env: claudeEnv,
   });
 
   claude.on("error", (err) => {

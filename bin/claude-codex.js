@@ -131,6 +131,7 @@ async function main() {
     startedBy: "claude-codex",
     forceRestart: args.includes("--restart"),
     extraArgs: [...extraArgs, ...claudePassthrough],
+    contextWindow: 1_000_000,
   });
 }
 

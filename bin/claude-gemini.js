@@ -110,6 +110,7 @@ async function main() {
     startedBy: "claude-gemini",
     forceRestart: args.includes("--restart"),
     extraArgs: [...extraArgs, ...claudePassthrough],
+    contextWindow: 1_000_000,
   });
 }
 

@@ -20,7 +20,7 @@ export type AnthropicContentBlock =
   | { type: "redacted_thinking"; data: string; cache_control?: unknown };
 
 export type AnthropicMessage = {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "system" | "developer";
   content: string | AnthropicContentBlock[];
 };
 

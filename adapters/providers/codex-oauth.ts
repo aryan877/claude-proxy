@@ -152,6 +152,16 @@ function stringifyToolResult(content: string | AnthropicContentBlock[]): string 
     .join("\n");
 }
 
+// Codex's ChatGPT backend rejects input items with role "system"
+// ({"detail":"System messages are not allowed"}). Claude Code 2.1.156+ sends
+// MCP/skill instructions as a role:"system" message inside `messages`, so map any
+// non-user/assistant role to "developer" — the Responses API's system-level role.
+function toInputRole(role: AnthropicMessage["role"]): "user" | "assistant" | "developer" {
+  if (role === "assistant") return "assistant";
+  if (role === "user") return "user";
+  return "developer";
+}
+
 export function toResponsesInput(
   messages: AnthropicMessage[],
   injectedReasoning: ResponseItem[] = [],
@@ -164,7 +174,7 @@ export function toResponsesInput(
     if (typeof m.content === "string") {
       out.push({
         type: "message",
-        role: m.role,
+        role: toInputRole(m.role),
         content: [
           m.role === "assistant"
             ? { type: "output_text", text: m.content }
@@ -224,7 +234,7 @@ export function toResponsesInput(
 
     if (leadingItems.length) out.push(...leadingItems);
     if (inlineContent.length) {
-      out.push({ type: "message", role: m.role, content: inlineContent });
+      out.push({ type: "message", role: toInputRole(m.role), content: inlineContent });
     }
     if (trailingItems.length) out.push(...trailingItems);
   }

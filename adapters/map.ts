@@ -65,7 +65,7 @@ const MODEL_SHORTCUTS: Record<string, string> = {
 // (Explore subagent, title gen, quota checks), remap to the active provider's
 // equivalent so it doesn't fail when Anthropic keys aren't configured.
 const PROVIDER_FAST_MODEL: Partial<Record<ProviderKey, string>> = {
-  "codex-oauth": "gpt-5.4-mini",
+  "codex-oauth": "gpt-5.5",
   "gemini-oauth": "gemini-3-flash-preview",
   "openai": "gpt-5-mini",
   "openrouter": "anthropic/claude-haiku-4-5",

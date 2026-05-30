@@ -133,7 +133,7 @@ Instead of typing `provider:full-model-name`, use shortcuts:
 /model flash          → glm-4-flash
 
 /model opus           → claude-opus-4-5
-/model sonnet         → claude-sonnet-4-5
+/model sonnet         → claude-sonnet-4-6
 /model haiku          → claude-haiku-4-5
 ```
 

@@ -35,7 +35,7 @@ const MODEL_SHORTCUTS: Record<string, string> = {
   m25: "openrouter:minimax/minimax-m2.5",
   // Claude shortcuts (for API users)
   opus: "anthropic:claude-opus-4-5-20251101",
-  sonnet: "anthropic:claude-sonnet-4-5-20250929",
+  sonnet: "anthropic:claude-sonnet-4-6-20251114",
   haiku: "anthropic:claude-haiku-4-5-20251001",
   // Gemini OAuth shortcuts (Google account login)
   gemini: "gemini-oauth:gemini-3.1-pro-preview",

@@ -186,8 +186,6 @@ export function toResponsesInput(
 
     const inlineContent: ResponseMessageContent[] = [];
     const trailingItems: ResponseItem[] = [];
-    const leadingItems: ResponseItem[] = [];
-
     for (const block of m.content as AnthropicContentBlock[]) {
       switch (block.type) {
         case "text":
@@ -217,22 +215,16 @@ export function toResponsesInput(
           });
           break;
         case "thinking":
-          // Anthropic thinking blocks come with an opaque `signature`. We can't decrypt
-          // it (Anthropic-encrypted) so we just keep the summary text — encrypted_content
-          // round-tripping is handled by our own reasoning cache, not by Claude's signature.
-          leadingItems.push({
-            type: "reasoning",
-            summary: [{ type: "summary_text", text: block.thinking }],
-            encrypted_content: null,
-          });
-          break;
         case "redacted_thinking":
-          // Anthropic redacted thinking is an opaque blob we can't unwrap; skip.
+          // Claude Code may replay historical Anthropic thinking blocks on every
+          // turn. They are not reusable Codex reasoning state; the only reasoning
+          // we should echo back is the encrypted_content returned by Responses
+          // and stored in our cache. Re-sending thinking summaries here can make
+          // long resumed sessions exceed the upstream context window.
           break;
       }
     }
 
-    if (leadingItems.length) out.push(...leadingItems);
     if (inlineContent.length) {
       out.push({ type: "message", role: toInputRole(m.role), content: inlineContent });
     }
@@ -380,14 +372,19 @@ async function chatCodexOAuthInner(
     if (accountId) headers["ChatGPT-Account-ID"] = accountId;
   }
 
+  const reqJson = JSON.stringify(reqBody);
+  const reasoningInputCount = input.filter((item) => item.type === "reasoning").length;
+  const functionCallCount = input.filter((item) => item.type === "function_call").length;
+  const functionOutputCount = input.filter((item) => item.type === "function_call_output").length;
+
   console.log(
-    `[codex] ${isOAuth ? "ChatGPT" : "API"} | model="${model}" items=${input.length} tools=${tools.length} reasoning=${reasoningEffort(reasoning)} cache=${cachedReasoning.length}`,
+    `[codex] ${isOAuth ? "ChatGPT" : "API"} | model="${model}" items=${input.length} tools=${tools.length} reasoning=${reasoningEffort(reasoning)} cache=${cachedReasoning.length} reqKiB=${(reqJson.length / 1024).toFixed(1)} reasoningItems=${reasoningInputCount} fnCalls=${functionCallCount} fnOutputs=${functionOutputCount}`,
   );
 
   const upstream = await fetch(url, {
     method: "POST",
     headers,
-    body: JSON.stringify(reqBody),
+    body: reqJson,
   });
 
   if (!upstream.ok || !upstream.body) {

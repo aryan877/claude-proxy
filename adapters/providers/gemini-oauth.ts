@@ -515,16 +515,17 @@ async function _chatGeminiOAuthInner(
   }
 
   // Handle errors that came through the SSE stream (HTTP 200 but error in body)
-  if (streamError && !hasStartedMessage) {
-    console.error(`[gemini-oauth] Stream error ${streamError.status}: ${streamError.message.slice(0, 200)}`);
-    if (streamError.status === 429 && !apiKey && accountHint === 1) {
+  const finalStreamError = streamError as { status: number; message: string } | null;
+  if (finalStreamError && !hasStartedMessage) {
+    console.error(`[gemini-oauth] Stream error ${finalStreamError.status}: ${finalStreamError.message.slice(0, 200)}`);
+    if (finalStreamError.status === 429 && !apiKey && accountHint === 1) {
       const acct2 = await loadTokens(2);
       if (acct2) {
         console.log("[gemini-oauth] Account 1 hit 429 (stream), retrying with account 2...");
         return _chatGeminiOAuthInner(res, body, model, undefined, reasoning, 2);
       }
     }
-    throw new Error(`Gemini API returned ${streamError.status}: ${streamError.message.slice(0, 300)}`);
+    throw new Error(`Gemini API returned ${finalStreamError.status}: ${finalStreamError.message.slice(0, 300)}`);
   }
 
   // ── Finalize: close blocks and emit tool_use if any ──────────────────

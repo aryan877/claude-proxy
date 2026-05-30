@@ -186,7 +186,7 @@ describe("toResponsesInput", () => {
     });
   });
 
-  it("converts thinking blocks to reasoning items", () => {
+  it("drops replayed Anthropic thinking blocks instead of converting them to Codex reasoning", () => {
     const messages: AnthropicMessage[] = [
       {
         role: "assistant",
@@ -198,11 +198,6 @@ describe("toResponsesInput", () => {
     ];
     const out = toResponsesInput(messages);
     expect(out).toEqual([
-      {
-        type: "reasoning",
-        summary: [{ type: "summary_text", text: "Let me consider..." }],
-        encrypted_content: null,
-      },
       {
         type: "message",
         role: "assistant",

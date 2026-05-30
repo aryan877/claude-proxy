@@ -70,15 +70,15 @@ export async function launchProxy({ rootDir, provider, model, defaultModel, star
     const proxyLog = join(homedir(), ".claude-proxy", "proxy.log");
     const proxy = spawn("npx", ["tsx", join(rootDir, "adapters", "anthropic-gateway.ts")], {
       cwd: rootDir,
-      env: { ...process.env, CCX_DEFAULT_PROVIDER: provider, CCX_DEFAULT_MODEL: model },
+      env: {
+        ...process.env,
+        CCX_DEFAULT_PROVIDER: provider,
+        CCX_DEFAULT_MODEL: model,
+        CCX_DIRECT_LOG: proxyLog,
+      },
       stdio: ["ignore", "pipe", "pipe"],
       detached: false,
     });
-
-    const fs = await import("fs");
-    const logStream = fs.createWriteStream(proxyLog, { flags: "a" });
-    proxy.stdout.pipe(logStream);
-    proxy.stderr.pipe(logStream);
 
     proxy.stdout.on("data", (d) => process.stdout.write(d));
     proxy.stderr.on("data", (d) => process.stderr.write(d));
@@ -93,6 +93,8 @@ export async function launchProxy({ rootDir, provider, model, defaultModel, star
 
     proxy.stdout.removeAllListeners("data");
     proxy.stderr.removeAllListeners("data");
+    proxy.stdout.resume();
+    proxy.stderr.resume();
 
     const cleanup = () => { try { proxy.kill("SIGTERM"); } catch {} };
     process.on("exit", cleanup);

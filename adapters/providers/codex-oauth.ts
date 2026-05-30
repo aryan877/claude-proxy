@@ -123,6 +123,17 @@ export type ResponseItem =
   | { type: "function_call_output"; call_id: string; output: string }
   | ReasoningResponseItem;
 
+export function textFromResponsesMessageItem(item: {
+  type?: string;
+  content?: Array<{ type?: string; text?: string }>;
+}): string {
+  if (item.type !== "message" || !Array.isArray(item.content)) return "";
+  return item.content
+    .map((part) => (part.type === "output_text" || part.type === "text" ? part.text || "" : ""))
+    .filter(Boolean)
+    .join("");
+}
+
 function flattenSystem(system: AnthropicRequest["system"]): string {
   if (!system) return "";
   if (typeof system === "string") return system;
@@ -130,6 +141,29 @@ function flattenSystem(system: AnthropicRequest["system"]): string {
     .map((b) => (typeof b === "string" ? b : (b as { text?: string }).text || ""))
     .filter(Boolean)
     .join("\n");
+}
+
+function previewText(text: string, max = 160): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact.length > max ? `${compact.slice(0, max)}...` : compact;
+}
+
+function responseItemSummary(item: ResponseItem | undefined): string {
+  if (!item) return "none";
+  if (item.type === "message") {
+    const text = item.content
+      .map((part) => ("text" in part ? part.text : part.image_url ? "[image]" : ""))
+      .filter(Boolean)
+      .join(" ");
+    return `message:${item.role}:${previewText(text)}`;
+  }
+  if (item.type === "function_call") {
+    return `function_call:${item.name}:${item.call_id}`;
+  }
+  if (item.type === "function_call_output") {
+    return `function_call_output:${item.call_id}:${previewText(item.output)}`;
+  }
+  return `reasoning:encrypted=${item.encrypted_content ? "yes" : "no"} summaries=${item.summary.length}`;
 }
 
 function imageUrlForBlock(block: Extract<AnthropicContentBlock, { type: "image" }>): string {
@@ -160,6 +194,28 @@ function toInputRole(role: AnthropicMessage["role"]): "user" | "assistant" | "de
   if (role === "assistant") return "assistant";
   if (role === "user") return "user";
   return "developer";
+}
+
+function trailingDeveloperMessageCount(messages: AnthropicMessage[]): number {
+  let count = 0;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (toInputRole(messages[i].role) !== "developer") break;
+    count += 1;
+  }
+  return count;
+}
+
+export function normalizeMessagesForResponses(messages: AnthropicMessage[]): AnthropicMessage[] {
+  const trailingCount = trailingDeveloperMessageCount(messages);
+  if (trailingCount === 0 || trailingCount === messages.length) return messages;
+
+  const split = messages.length - trailingCount;
+  const finalActionable = messages[split - 1];
+  return [
+    ...messages.slice(0, split - 1),
+    ...messages.slice(split),
+    finalActionable,
+  ];
 }
 
 export function toResponsesInput(
@@ -327,19 +383,23 @@ async function chatCodexOAuthInner(
     ? `${CHATGPT_CODEX_BASE}/responses`
     : `${OPENAI_API_BASE}/responses`;
 
-  const convoKey = conversationKey(body.messages);
-  const cachedReasoning = reasoningItems(convoKey) as ResponseItem[];
+  const messages = normalizeMessagesForResponses(body.messages);
+  const trailingDeveloperMoved = messages === body.messages ? 0 : trailingDeveloperMessageCount(body.messages);
+  const convoKey = conversationKey(messages);
+  const reasoningCacheDisabled = process.env.CCX_DISABLE_REASONING_CACHE === "1";
+  const cachedReasoning = reasoningCacheDisabled ? [] : (reasoningItems(convoKey) as ResponseItem[]);
   const promptCacheKey = threadIdFor(convoKey);
 
-  const input = toResponsesInput(body.messages, cachedReasoning);
+  const input = toResponsesInput(messages, cachedReasoning);
   const tools = toResponsesTools(body.tools);
   const verbosity = textVerbosity();
   const summary = reasoningSummary();
+  const instructions = flattenSystem(body.system);
 
   // ── Build request body (matches ResponsesApiRequest in codex-rs/codex-api/src/common.rs) ──
   const reqBody: Record<string, unknown> = {
     model,
-    instructions: flattenSystem(body.system),
+    instructions,
     input,
     tools,
     tool_choice: toResponsesToolChoice(body.tool_choice),
@@ -376,9 +436,10 @@ async function chatCodexOAuthInner(
   const reasoningInputCount = input.filter((item) => item.type === "reasoning").length;
   const functionCallCount = input.filter((item) => item.type === "function_call").length;
   const functionOutputCount = input.filter((item) => item.type === "function_call_output").length;
+  const lastInput = responseItemSummary(input.at(-1));
 
   console.log(
-    `[codex] ${isOAuth ? "ChatGPT" : "API"} | model="${model}" items=${input.length} tools=${tools.length} reasoning=${reasoningEffort(reasoning)} cache=${cachedReasoning.length} reqKiB=${(reqJson.length / 1024).toFixed(1)} reasoningItems=${reasoningInputCount} fnCalls=${functionCallCount} fnOutputs=${functionOutputCount}`,
+    `[codex] ${isOAuth ? "ChatGPT" : "API"} | model="${model}" messages=${messages.length} systemChars=${instructions.length} items=${input.length} tools=${tools.length} reasoning=${reasoningEffort(reasoning)} cache=${cachedReasoning.length}${reasoningCacheDisabled ? " cacheDisabled=1" : ""} movedTrailingDeveloper=${trailingDeveloperMoved} reqKiB=${(reqJson.length / 1024).toFixed(1)} reasoningItems=${reasoningInputCount} fnCalls=${functionCallCount} fnOutputs=${functionOutputCount} last=${JSON.stringify(lastInput)}`,
   );
 
   const upstream = await fetch(url, {
@@ -405,6 +466,9 @@ type StreamState = {
   blockIndex: number;
   funcCallByItemId: Map<string, { blockIndex: number; name: string; callId: string }>;
   newReasoningItems: ReasoningResponseItem[];
+  textChars: number;
+  thinkingChars: number;
+  toolCalls: number;
   inputTokens: number;
   outputTokens: number;
   cacheCreationInputTokens: number;
@@ -421,6 +485,9 @@ function makeState(): StreamState {
     blockIndex: 0,
     funcCallByItemId: new Map(),
     newReasoningItems: [],
+    textChars: 0,
+    thinkingChars: 0,
+    toolCalls: 0,
     inputTokens: 0,
     outputTokens: 0,
     cacheCreationInputTokens: 0,
@@ -485,6 +552,17 @@ function closeText(res: FastifyReply, s: StreamState) {
   s.blockIndex += 1;
 }
 
+function emitTextDelta(res: FastifyReply, s: StreamState, model: string, text: string) {
+  if (!text) return;
+  openText(res, s, model);
+  s.textChars += text.length;
+  sendEvent(res, "content_block_delta", {
+    type: "content_block_delta",
+    index: s.blockIndex,
+    delta: { type: "text_delta", text },
+  });
+}
+
 async function pumpResponsesStream(
   res: FastifyReply,
   body: ReadableStream<Uint8Array>,
@@ -514,9 +592,20 @@ async function pumpResponsesStream(
       if (done) break;
       parser.feed(decoder.decode(value, { stream: true }));
     }
-  } finally {
+  } catch (err) {
+    if (!s.messageStarted) throw err;
+    if (!s.funcCallByItemId.size) {
+      emitTextDelta(
+        res,
+        s,
+        model,
+        `[codex proxy error] ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     finalize(res, s, model, convoKey);
+    return;
   }
+  finalize(res, s, model, convoKey);
 }
 
 function finalize(res: FastifyReply, s: StreamState, model: string, convoKey: string) {
@@ -529,6 +618,10 @@ function finalize(res: FastifyReply, s: StreamState, model: string, convoKey: st
   s.funcCallByItemId.clear();
 
   if (s.newReasoningItems.length) setReasoningItems(convoKey, s.newReasoningItems);
+
+  console.log(
+    `[codex] stream done textChars=${s.textChars} thinkingChars=${s.thinkingChars} toolCalls=${s.toolCalls} input=${s.inputTokens} output=${s.outputTokens} cacheRead=${s.cacheReadInputTokens} stop=${s.stopReason}`,
+  );
 
   sendEvent(res, "message_delta", {
     type: "message_delta",
@@ -555,18 +648,27 @@ function handleEvent(
 
   switch (type) {
     case "response.created":
-      ensureMessageStarted(res, s, model);
       return;
 
     case "response.output_text.delta": {
       const delta = json.delta as string | undefined;
       if (!delta) return;
-      openText(res, s, model);
-      sendEvent(res, "content_block_delta", {
-        type: "content_block_delta",
-        index: s.blockIndex,
-        delta: { type: "text_delta", text: delta },
-      });
+      emitTextDelta(res, s, model, delta);
+      return;
+    }
+
+    case "response.output_text.done": {
+      // Some Responses streams only expose the full text in the done event.
+      // Avoid duplicating normal delta streams by using this as a fallback.
+      const text = json.text as string | undefined;
+      if (text && s.textChars === 0) emitTextDelta(res, s, model, text);
+      return;
+    }
+
+    case "response.content_part.done": {
+      const part = json.part as { type?: string; text?: string } | undefined;
+      const text = part?.type === "output_text" || part?.type === "text" ? part.text : "";
+      if (text && s.textChars === 0) emitTextDelta(res, s, model, text);
       return;
     }
 
@@ -575,6 +677,7 @@ function handleEvent(
       const delta = json.delta as string | undefined;
       if (!delta) return;
       openThinking(res, s, model);
+      s.thinkingChars += delta.length;
       sendEvent(res, "content_block_delta", {
         type: "content_block_delta",
         index: s.blockIndex,
@@ -610,6 +713,7 @@ function handleEvent(
           name,
           callId,
         });
+        s.toolCalls += 1;
         sendEvent(res, "content_block_start", {
           type: "content_block_start",
           index: s.blockIndex,
@@ -649,6 +753,7 @@ function handleEvent(
             call_id?: string;
             name?: string;
             arguments?: string;
+            content?: Array<{ type?: string; text?: string }>;
             summary?: Array<{ type: string; text: string }>;
             encrypted_content?: string | null;
           }
@@ -674,6 +779,8 @@ function handleEvent(
           })),
           encrypted_content: item.encrypted_content ?? null,
         });
+      } else if (item.type === "message" && s.textChars === 0) {
+        emitTextDelta(res, s, model, textFromResponsesMessageItem(item));
       }
       return;
     }

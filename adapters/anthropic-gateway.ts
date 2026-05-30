@@ -26,10 +26,41 @@ import { writePid, registerCleanup } from "../bin/lib/pid-manager.js";
 import { config } from "dotenv";
 import { join } from "path";
 import { homedir } from "os";
+import { appendFileSync } from "fs";
 
 // Load .env from ~/.claude-proxy/.env
 const envPath = join(homedir(), ".claude-proxy", ".env");
 config({ path: envPath });
+
+const directLogPath = process.env.CCX_DIRECT_LOG;
+if (directLogPath) {
+  const baseLog = console.log.bind(console);
+  const baseError = console.error.bind(console);
+  const formatArg = (arg: unknown) => {
+    if (typeof arg === "string") return arg;
+    if (arg instanceof Error) return arg.stack || arg.message;
+    try {
+      return JSON.stringify(arg);
+    } catch {
+      return String(arg);
+    }
+  };
+  const append = (args: unknown[]) => {
+    try {
+      appendFileSync(directLogPath, `${args.map(formatArg).join(" ")}\n`);
+    } catch {
+      // Logging must never break the local proxy.
+    }
+  };
+  console.log = (...args: unknown[]) => {
+    append(args);
+    baseLog(...args);
+  };
+  console.error = (...args: unknown[]) => {
+    append(args);
+    baseError(...args);
+  };
+}
 
 const PORT = Number(process.env.CLAUDE_PROXY_PORT || 17870);
 

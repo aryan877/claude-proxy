@@ -3,6 +3,8 @@ import {
   toResponsesTools,
   toResponsesToolChoice,
   toResponsesInput,
+  textFromResponsesMessageItem,
+  normalizeMessagesForResponses,
 } from "../adapters/providers/codex-oauth.js";
 import { parseProviderModel } from "../adapters/map.js";
 import { conversationKey, threadIdFor } from "../adapters/codex-reasoning-cache.js";
@@ -246,6 +248,53 @@ describe("toResponsesInput", () => {
       call_id: "toolu_x",
       output: "line 1\nline 2",
     });
+  });
+});
+
+describe("textFromResponsesMessageItem", () => {
+  it("extracts output_text content from a completed Responses message item", () => {
+    expect(
+      textFromResponsesMessageItem({
+        type: "message",
+        content: [
+          { type: "output_text", text: "hel" },
+          { type: "output_text", text: "lo" },
+        ],
+      }),
+    ).toBe("hello");
+  });
+
+  it("ignores non-message items", () => {
+    expect(textFromResponsesMessageItem({ type: "reasoning", content: [] })).toBe("");
+  });
+});
+
+describe("normalizeMessagesForResponses", () => {
+  it("moves trailing developer context before the final user prompt", () => {
+    const messages: AnthropicMessage[] = [
+      { role: "user", content: "previous" },
+      { role: "assistant", content: "ok" },
+      { role: "user", content: "answer this" },
+      { role: "system", content: "ambient MCP status" },
+      { role: "developer", content: "skill listing" },
+    ];
+
+    expect(normalizeMessagesForResponses(messages).map((m) => m.content)).toEqual([
+      "previous",
+      "ok",
+      "ambient MCP status",
+      "skill listing",
+      "answer this",
+    ]);
+  });
+
+  it("leaves already-actionable tails untouched", () => {
+    const messages: AnthropicMessage[] = [
+      { role: "developer", content: "instructions" },
+      { role: "user", content: "answer this" },
+    ];
+
+    expect(normalizeMessagesForResponses(messages)).toBe(messages);
   });
 });
 

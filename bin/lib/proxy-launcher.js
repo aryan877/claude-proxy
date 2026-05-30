@@ -34,7 +34,28 @@ async function waitForProxy(port, maxWait = 15000) {
  * 2. Stale/zombie process on port?  → Kill it, start fresh
  * 3. Port free?                     → Start new proxy
  */
-export async function launchProxy({ rootDir, provider, model, defaultModel, startedBy, forceRestart = false, extraArgs = [], contextWindow }) {
+export function formatTokenCount(tokens) {
+  if (!tokens || !Number.isFinite(tokens)) return "unknown";
+  if (tokens >= 1_000_000) {
+    const m = tokens / 1_000_000;
+    return `${Number.isInteger(m) ? m.toFixed(0) : m.toFixed(1)}M`;
+  }
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
+  return String(tokens);
+}
+
+export async function launchProxy({
+  rootDir,
+  provider,
+  model,
+  defaultModel,
+  startedBy,
+  forceRestart = false,
+  extraArgs = [],
+  contextWindow,
+  autoCompactWindow,
+  disableCompact = true,
+}) {
   const PORT = Number(process.env.CLAUDE_PROXY_PORT || 17870);
 
   // Step 1: Check if a healthy proxy is already running
@@ -107,14 +128,8 @@ export async function launchProxy({ rootDir, provider, model, defaultModel, star
 
   const claudeArgs = ["--model", defaultModel, ...extraArgs];
 
-  // Underlying provider supports a bigger context than Claude Code's default 200K
-  // (Codex / gpt-5.5 ~ 1M, Gemini 3 Pro ~ 1M). Tell Claude Code so it doesn't
-  // auto-compact prematurely. Caller can override via env if they want.
-  //
-  // Claude Code caps AUTO_COMPACT_WINDOW at the model's hardcoded context window —
-  // 200K for unknown model names like "codex" — via Math.min(modelWindow, envValue).
-  // The actual escape hatch is the combo DISABLE_COMPACT=1 + CLAUDE_CODE_MAX_CONTEXT_TOKENS=<n>,
-  // which Claude Code's hP() reads first and returns directly as the model window.
+  // Tell Claude Code the provider's effective window. Overstating this makes
+  // long sessions drift into upstream context failures before compaction.
   const claudeEnv = {
     ...process.env,
     ANTHROPIC_BASE_URL: `http://127.0.0.1:${PORT}`,
@@ -122,16 +137,20 @@ export async function launchProxy({ rootDir, provider, model, defaultModel, star
   };
   if (contextWindow) {
     const win = String(contextWindow);
+    const compactAt = autoCompactWindow ? String(autoCompactWindow) : win;
     if (!process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) {
-      claudeEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = win;
+      claudeEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = compactAt;
     }
     if (!process.env.CLAUDE_CODE_MAX_CONTEXT_TOKENS) {
       claudeEnv.CLAUDE_CODE_MAX_CONTEXT_TOKENS = win;
     }
-    if (!process.env.DISABLE_COMPACT) {
+    if (disableCompact && !process.env.DISABLE_COMPACT) {
       claudeEnv.DISABLE_COMPACT = "1";
     }
-    console.log(`  Context window: ${(contextWindow / 1e6).toFixed(1)}M tokens (auto-compact disabled)`);
+    const compactText = claudeEnv.DISABLE_COMPACT === "1"
+      ? "auto-compact disabled"
+      : `auto-compact at ${formatTokenCount(Number(claudeEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW))}`;
+    console.log(`  Context window: ${formatTokenCount(contextWindow)} tokens (${compactText})`);
   }
 
   const claude = spawn("claude", claudeArgs, {

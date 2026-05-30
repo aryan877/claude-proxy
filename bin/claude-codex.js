@@ -17,6 +17,15 @@ const rootDir = join(__dirname, "..");
 
 const CODEX_AUTH_FILE = join(homedir(), ".codex", "auth.json");
 const PROXY_AUTH_FILE = join(homedir(), ".claude-proxy", "codex-oauth.json");
+const DEFAULT_CODEX_CONTEXT_WINDOW = 272_000;
+const DEFAULT_CODEX_EFFECTIVE_PERCENT = 95;
+
+function positiveIntEnv(name, fallback) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
 
 function decodeJwt(token) {
   try {
@@ -123,6 +132,13 @@ async function main() {
     !["--restart", "--stop", "--proxy-status", "--status", "--logout", "-d", "--dangerously-skip-permissions"].includes(a)
   );
 
+  const contextWindow = positiveIntEnv("CODEX_CONTEXT_WINDOW_TOKENS", DEFAULT_CODEX_CONTEXT_WINDOW);
+  const defaultAutoCompact = Math.floor(contextWindow * DEFAULT_CODEX_EFFECTIVE_PERCENT / 100);
+  const autoCompactWindow = Math.min(
+    positiveIntEnv("CODEX_AUTO_COMPACT_WINDOW_TOKENS", defaultAutoCompact),
+    contextWindow,
+  );
+
   await launchProxy({
     rootDir,
     provider: "codex-oauth",
@@ -131,7 +147,9 @@ async function main() {
     startedBy: "claude-codex",
     forceRestart: args.includes("--restart"),
     extraArgs: [...extraArgs, ...claudePassthrough],
-    contextWindow: 1_000_000,
+    contextWindow,
+    autoCompactWindow,
+    disableCompact: process.env.CODEX_DISABLE_COMPACT === "1",
   });
 }
 

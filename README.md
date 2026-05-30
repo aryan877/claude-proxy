@@ -139,6 +139,18 @@ Instead of typing `provider:full-model-name`, use shortcuts:
 
 You can also use the full `provider:model` format: `/model codex-oauth:gpt-5.5`
 
+### Codex Context Window
+
+`claude-codex` mirrors the current Codex CLI catalog for `gpt-5.5`: `272000`
+tokens with auto-compact at the 95% effective window (`258400`). Override only
+for explicit experiments:
+
+```
+CODEX_CONTEXT_WINDOW_TOKENS=500000 claude-codex
+CODEX_AUTO_COMPACT_WINDOW_TOKENS=475000 claude-codex
+CODEX_DISABLE_COMPACT=1 claude-codex
+```
+
 ### Reasoning Levels
 
 Append `@level` to any model to control reasoning effort:

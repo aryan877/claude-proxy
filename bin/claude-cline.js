@@ -72,21 +72,31 @@ async function main() {
     console.log("  ClinePass: Not authenticated. Open the Cline app (or run `cline`) and sign in first.");
   }
   console.log("");
-  console.log("  Models  /model <name>            Thinking  /model <name>@<level>");
-  console.log("  ───────────────────────────────  ─────────────────────────────");
-  console.log("   cp · glm52   GLM-5.2 (default)   @none    off — fastest");
-  console.log("   cpkimi       Kimi K2.7 Code      @minimal off");
-  console.log("   cpkimi26     Kimi K2.6           @low     light");
-  console.log("   cpqwen       Qwen3.7 Max         @medium  balanced");
-  console.log("   cpqwenplus   Qwen3.7 Plus        @high    deep");
-  console.log("   cpminimax    MiniMax-M3          @xhigh   deepest");
-  console.log("   cpdeepseek   DeepSeek V4 Pro");
-  console.log("   cpflash      DeepSeek V4 Flash   Default thinking = on.");
-  console.log("   cpmimo       MiMo-V2.5-Pro       Any model: /model cline-pass:<id>");
-  console.log("   cpmimo25     MiMo-V2.5");
+  console.log("  MODELS   switch with   /model <name>");
+  console.log("  ──────────────────────────────────────────────────────────────────");
+  const COLA = [
+    ["cp", "GLM-5.2  (default)"],
+    ["cpkimi", "Kimi K2.7 Code"],
+    ["cpkimi26", "Kimi K2.6"],
+    ["cpqwen", "Qwen3.7 Max"],
+    ["cpqwenplus", "Qwen3.7 Plus"],
+  ];
+  const COLB = [
+    ["cpminimax", "MiniMax-M3"],
+    ["cpdeepseek", "DeepSeek V4 Pro"],
+    ["cpflash", "DeepSeek V4 Flash"],
+    ["cpmimo", "MiMo-V2.5-Pro"],
+    ["cpmimo25", "MiMo-V2.5"],
+  ];
+  for (let i = 0; i < COLA.length; i++) {
+    console.log("   " + COLA[i][0].padEnd(12) + COLA[i][1].padEnd(20) + COLB[i][0].padEnd(12) + COLB[i][1]);
+  }
   console.log("");
-  console.log("   e.g.  /model cpkimi@high   ·   /model cp@none   ·   /model cpflash@minimal");
-  console.log("   Session default level:  CLINE_REASONING_EFFORT=none claude-cline");
+  console.log("  THINKING   add @level to a model   (default: on)");
+  console.log("  ──────────────────────────────────────────────────────────────────");
+  console.log("   @none   @minimal   off, fastest        @low   @medium   @high   @xhigh   deepest");
+  console.log("");
+  console.log("   e.g.   /model cpkimi      /model cp@none      /model cpqwen@high");
   console.log("");
 
   const extraArgs = [];

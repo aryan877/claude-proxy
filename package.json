@@ -35,6 +35,8 @@
     "claude-codex-d": "bin/claude-codex-d.js",
     "claude-gemini": "bin/claude-gemini.js",
     "claude-gemini-d": "bin/claude-gemini-d.js",
+    "claude-cline": "bin/claude-cline.js",
+    "claude-cline-d": "bin/claude-cline-d.js",
     "ccx": "bin/ccx.js",
     "ccx-d": "bin/ccx-d.js"
   },

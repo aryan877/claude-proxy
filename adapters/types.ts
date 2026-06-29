@@ -50,9 +50,9 @@ export type AnthropicRequest = {
   metadata?: { user_id?: string };
 };
 
-export type ProviderKey = "openai" | "openrouter" | "gemini" | "gemini-oauth" | "codex-oauth" | "glm" | "anthropic";
+export type ProviderKey = "openai" | "openrouter" | "gemini" | "gemini-oauth" | "codex-oauth" | "glm" | "anthropic" | "cline-pass";
 
-export type ReasoningLevel = "low" | "medium" | "high" | "xhigh";
+export type ReasoningLevel = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type ProviderModel = {
   provider: ProviderKey;

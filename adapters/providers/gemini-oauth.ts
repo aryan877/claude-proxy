@@ -228,14 +228,14 @@ async function _chatGeminiOAuthInner(
     let thinkingLevel: string;
     if (isLimitedThinking) {
       // gemini-3-pro-preview: only LOW and HIGH
-      const LIMITED_LEVELS: Record<string, string> = { low: "LOW", medium: "HIGH", high: "HIGH", xhigh: "HIGH" };
+      const LIMITED_LEVELS: Record<string, string> = { none: "LOW", minimal: "LOW", low: "LOW", medium: "HIGH", high: "HIGH", xhigh: "HIGH" };
       thinkingLevel = LIMITED_LEVELS[reasoning || ""] || "HIGH";
       if (reasoning === "medium") {
         console.log(`[gemini] Note: ${model} doesn't support MEDIUM, using HIGH instead`);
       }
     } else {
       // 3.1-pro, 3-flash, 3.1-flash: full range
-      const THINKING_LEVELS: Record<string, string> = { low: "LOW", medium: "MEDIUM", high: "HIGH", xhigh: "HIGH" };
+      const THINKING_LEVELS: Record<string, string> = { none: "MINIMAL", minimal: "MINIMAL", low: "LOW", medium: "MEDIUM", high: "HIGH", xhigh: "HIGH" };
       thinkingLevel = THINKING_LEVELS[reasoning || ""] || "HIGH";
     }
     thinkingConfig = { includeThoughts: true, thinkingLevel };

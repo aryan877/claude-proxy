@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import { parseProviderModel, warnIfTools } from "./map.js";
 import type { AnthropicRequest, ProviderModel } from "./types.js";
 import { chatOpenRouter } from "./providers/openrouter.js";
+import { chatClinePass } from "./providers/cline-pass.js";
 import { chatGeminiOAuth } from "./providers/gemini-oauth.js";
 import { chatCodexOAuth } from "./providers/codex-oauth.js";
 import { passThrough } from "./providers/anthropic-pass.js";
@@ -374,6 +375,10 @@ fastify.post("/v1/messages", async (req, res) => {
         throw apiError(401, "OPENROUTER_API_KEY not set in ~/.claude-proxy/.env");
       }
       return runStreaming((r) => chatOpenRouter(r, body, model, key));
+    }
+
+    if (provider === "cline-pass") {
+      return runStreaming((r) => chatClinePass(r, body, model, reasoning));
     }
 
     if (provider === "gemini-oauth") {

@@ -293,6 +293,7 @@ export function toResponsesInput(
 // ── Reasoning effort mapping ─────────────────────────────────────────
 
 function reasoningEffort(level?: ReasoningLevel): "low" | "medium" | "high" | "xhigh" {
+  if (level === "none" || level === "minimal") return "low"; // Codex has no thinking-off; floor to low
   if (level) return level;
   const env = (process.env.CODEX_REASONING_EFFORT || "").toLowerCase();
   if (env === "low" || env === "medium" || env === "high" || env === "xhigh") return env;

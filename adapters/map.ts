@@ -7,7 +7,7 @@ import {
   ReasoningLevel,
 } from "./types.js";
 
-const VALID_REASONING: ReasoningLevel[] = ["low", "medium", "high", "xhigh"];
+const VALID_REASONING: ReasoningLevel[] = ["none", "minimal", "low", "medium", "high", "xhigh"];
 
 const PROVIDER_PREFIXES: ProviderKey[] = [
   "openai",
@@ -17,6 +17,7 @@ const PROVIDER_PREFIXES: ProviderKey[] = [
   "codex-oauth",
   "glm",
   "anthropic",
+  "cline-pass",
 ];
 
 // Model shortcuts - add your own aliases here
@@ -59,6 +60,21 @@ const MODEL_SHORTCUTS: Record<string, string> = {
   deep: "codex-oauth:gpt-5.5@high",      // proxy default
   max: "codex-oauth:gpt-5.5@xhigh",      // top reasoning
   think: "codex-oauth:gpt-5.5@xhigh",    // alias for max
+  // ClinePass shortcuts (Cline subscription — included models, $0 per call)
+  cline: "cline-pass:glm-5.2",
+  clinepass: "cline-pass:glm-5.2",
+  cp: "cline-pass:glm-5.2",
+  cpglm: "cline-pass:glm-5.2",
+  glm52: "cline-pass:glm-5.2",
+  cpkimi: "cline-pass:kimi-k2.7-code",
+  cpkimi26: "cline-pass:kimi-k2.6",
+  cpqwen: "cline-pass:qwen3.7-max",
+  cpqwenplus: "cline-pass:qwen3.7-plus",
+  cpminimax: "cline-pass:minimax-m3",
+  cpdeepseek: "cline-pass:deepseek-v4-pro",
+  cpflash: "cline-pass:deepseek-v4-flash",
+  cpmimo: "cline-pass:mimo-v2.5-pro",
+  cpmimo25: "cline-pass:mimo-v2.5",
 };
 
 // When Claude Code internally sends claude-haiku-*/claude-sonnet-* requests
@@ -70,6 +86,7 @@ const PROVIDER_FAST_MODEL: Partial<Record<ProviderKey, string>> = {
   "openai": "gpt-5-mini",
   "openrouter": "anthropic/claude-haiku-4-5",
   "glm": "glm-4.5-air",
+  "cline-pass": "glm-5.2",
 };
 
 const PROVIDER_MAIN_MODEL: Partial<Record<ProviderKey, string>> = {
@@ -78,6 +95,7 @@ const PROVIDER_MAIN_MODEL: Partial<Record<ProviderKey, string>> = {
   "openai": "gpt-5.5",
   "openrouter": "anthropic/claude-sonnet-4-6",
   "glm": "glm-5",
+  "cline-pass": "glm-5.2",
 };
 
 /**

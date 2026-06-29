@@ -21,8 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Web search is forced on for Codex by registering the native `{type: "web_search"}` tool — Claude Code's `WebSearch`/`WebFetch` tools are stripped because Codex executes search server-side
 
 ### Added
+- **ClinePass provider** (`cline-pass`) — route Claude Code through a paid Cline / ClinePass subscription (`https://api.cline.bot/api/v1`), included models cost `$0` per call
+  - `claude-cline` / `claude-cline-d` launchers; default model `glm-5.2`
+  - OAuth token read live from the Cline app's `~/.cline/data/settings/providers.json` (kept fresh by Cline's hub-daemon)
+  - 10 models with shortcuts: `cp`/`glm52`, `cpkimi`, `cpkimi26`, `cpqwen`, `cpqwenplus`, `cpminimax`, `cpdeepseek`, `cpflash`, `cpmimo`, `cpmimo25`
+  - `CLINE_REASONING_EFFORT` / `CLINE_API_BASE_URL` / `CLINE_PROVIDERS_PATH` env overrides
+- `adapters/providers/openai-compat.ts` — shared OpenAI-compatible Anthropic↔OpenAI streamer; `openrouter` now delegates to it
 - `adapters/codex-reasoning-cache.ts` — in-memory TTL cache keyed by first-user-turn hash
 - `tests/codex-oauth.test.ts` — converter tests covering tools, messages, images, tool calls, thinking, and cache key derivation
+
+### Changed
+- Reasoning levels now include `none` and `minimal` (thinking off) alongside `low`/`medium`/`high`/`xhigh`; ClinePass passes the full set through natively, Codex floors `none`/`minimal` to `low`, Gemini 3 maps them to its lowest thinking level
 
 ## [1.0.3] - 2025-10-01
 

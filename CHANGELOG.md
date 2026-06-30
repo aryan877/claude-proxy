@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **ClinePass auth** — the proxy now refreshes the ClinePass access token itself instead of trusting the Cline app to keep `providers.json` fresh. ClinePass access tokens only live ~1 hour, so once the app/hub-daemon stopped refreshing, every `cp*` call (and `/model cp@high`, `/model cp@medium`, …) failed with `401 Unauthorized: Please make sure you're using the latest version of Cline…`. The adapter now:
+  - detects an expired/near-expiry token (5-min skew) and refreshes via `POST /api/v1/auth/refresh` (`{refreshToken, grantType:"refresh_token"}`) using the stored refresh token
+  - persists the rotated `accessToken`/`refreshToken`/`expiresAt` back into every `cline*` entry of `providers.json` atomically (temp file + rename)
+  - re-applies the required `workos:` token prefix (the API 401s on a bare JWT)
+  - dedupes concurrent refreshes and retries once on an upstream 401 (token revoked mid-validity)
+
 ### Changed
 - Codex adapter rewritten to match the real Codex CLI wire format 1:1
   - Always POSTs to `/v1/responses` (both OAuth and API key paths) — never `/v1/chat/completions`
@@ -23,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **ClinePass provider** (`cline-pass`) — route Claude Code through a paid Cline / ClinePass subscription (`https://api.cline.bot/api/v1`), included models cost `$0` per call
   - `claude-cline` / `claude-cline-d` launchers; default model `glm-5.2`
-  - OAuth token read live from the Cline app's `~/.cline/data/settings/providers.json` (kept fresh by Cline's hub-daemon)
+  - OAuth token read live from the Cline app's `~/.cline/data/settings/providers.json`, and auto-refreshed by the proxy when expired (see Fixed below)
   - 10 models with shortcuts: `cp`/`glm52`, `cpkimi`, `cpkimi26`, `cpqwen`, `cpqwenplus`, `cpminimax`, `cpdeepseek`, `cpflash`, `cpmimo`, `cpmimo25`
   - `CLINE_REASONING_EFFORT` / `CLINE_API_BASE_URL` / `CLINE_PROVIDERS_PATH` env overrides
 - `adapters/providers/openai-compat.ts` — shared OpenAI-compatible Anthropic↔OpenAI streamer; `openrouter` now delegates to it

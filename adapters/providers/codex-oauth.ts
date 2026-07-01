@@ -371,6 +371,47 @@ function emitErrorAsSse(res: FastifyReply, model: string, message: string) {
   }
 }
 
+// undici wraps every connection-level failure as a bare `TypeError: fetch failed`,
+// hiding the real reason (ECONNRESET from a stale keep-alive socket, connect
+// timeout, DNS blip). Unwrap `.cause` so logs and the surfaced error say why.
+function describeFetchError(err: unknown): string {
+  if (!(err instanceof Error)) return String(err);
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    const code = (cause as { code?: string }).code;
+    return code ? `${err.message} (${code})` : `${err.message} (${cause.message})`;
+  }
+  return err.message;
+}
+
+// `fetch()` only throws on connection-level failures — an HTTP error status comes
+// back as a resolved Response — so a throw means the request never reached the
+// server and re-POSTing the identical body is safe (Codex requests use store:false).
+// The dominant cause is a pooled keep-alive socket the backend already closed;
+// the failing attempt errors instantly and the retry gets a fresh connection.
+async function fetchCodexWithRetry(
+  url: string,
+  init: RequestInit,
+  attempts = 3,
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < attempts) {
+        const backoffMs = 250 * attempt;
+        console.error(
+          `[codex] upstream connect failed (attempt ${attempt}/${attempts}): ${describeFetchError(err)} — retrying in ${backoffMs}ms`,
+        );
+        await new Promise((r) => setTimeout(r, backoffMs));
+      }
+    }
+  }
+  throw new Error(describeFetchError(lastErr));
+}
+
 async function chatCodexOAuthInner(
   res: FastifyReply,
   body: AnthropicRequest,
@@ -443,7 +484,7 @@ async function chatCodexOAuthInner(
     `[codex] ${isOAuth ? "ChatGPT" : "API"} | model="${model}" messages=${messages.length} systemChars=${instructions.length} items=${input.length} tools=${tools.length} reasoning=${reasoningEffort(reasoning)} cache=${cachedReasoning.length}${reasoningCacheDisabled ? " cacheDisabled=1" : ""} movedTrailingDeveloper=${trailingDeveloperMoved} reqKiB=${(reqJson.length / 1024).toFixed(1)} reasoningItems=${reasoningInputCount} fnCalls=${functionCallCount} fnOutputs=${functionOutputCount} last=${JSON.stringify(lastInput)}`,
   );
 
-  const upstream = await fetch(url, {
+  const upstream = await fetchCodexWithRetry(url, {
     method: "POST",
     headers,
     body: reqJson,
@@ -600,7 +641,7 @@ async function pumpResponsesStream(
         res,
         s,
         model,
-        `[codex proxy error] ${err instanceof Error ? err.message : String(err)}`,
+        `[codex proxy error] ${describeFetchError(err)}`,
       );
     }
     finalize(res, s, model, convoKey);

@@ -34,10 +34,10 @@ const MODEL_SHORTCUTS: Record<string, string> = {
   minimax: "openrouter:minimax/minimax-m2.5",
   mm: "openrouter:minimax/minimax-m2.5",
   m25: "openrouter:minimax/minimax-m2.5",
-  // Claude shortcuts (for API users)
-  opus: "anthropic:claude-opus-4-5-20251101",
-  sonnet: "anthropic:claude-sonnet-4-6-20251114",
-  haiku: "anthropic:claude-haiku-4-5-20251001",
+  // Claude shortcuts (for API users) — bare aliases, no dated suffixes
+  opus: "anthropic:claude-opus-4-8",
+  sonnet: "anthropic:claude-sonnet-5",
+  haiku: "anthropic:claude-haiku-4-5",
   // Gemini OAuth shortcuts (Google account login)
   gemini: "gemini-oauth:gemini-3.1-pro-preview",
   "gemini-pro": "gemini-oauth:gemini-3.1-pro-preview",
@@ -93,7 +93,7 @@ const PROVIDER_MAIN_MODEL: Partial<Record<ProviderKey, string>> = {
   "codex-oauth": "gpt-5.5",
   "gemini-oauth": "gemini-3.1-pro-preview",
   "openai": "gpt-5.5",
-  "openrouter": "anthropic/claude-sonnet-4-6",
+  "openrouter": "anthropic/claude-sonnet-5",
   "glm": "glm-5",
   "cline-pass": "glm-5.2",
 };

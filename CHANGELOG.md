@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - dedupes concurrent refreshes and retries once on an upstream 401 (token revoked mid-validity)
 
 ### Changed
+- **Claude shortcuts updated for the Claude 5 family** — `sonnet` now maps to `anthropic:claude-sonnet-5` (was `claude-sonnet-4-6-20251114`) and `opus` to `anthropic:claude-opus-4-8` (was `claude-opus-4-5-20251101`); `haiku` uses the bare `claude-haiku-4-5` alias (dropped the dated suffix). The internal subagent remap already routed Claude Code's `claude-sonnet-5` calls to each provider's equivalent (e.g. `codex-oauth:gpt-5.5`), so Codex/Gemini/GLM subagents keep working; this only refreshes the typeable `/model` aliases and the OpenRouter main-model fallback (`anthropic/claude-sonnet-5`).
 - Codex adapter rewritten to match the real Codex CLI wire format 1:1
   - Always POSTs to `/v1/responses` (both OAuth and API key paths) — never `/v1/chat/completions`
   - Sends `originator: codex_cli_rs`, `User-Agent: codex_cli_rs/<ver> (<os> <ver>; <arch>)`, and `x-codex-installation-id` headers like the real CLI

@@ -318,16 +318,16 @@ Examples:
 | `flash` | `glm:glm-4-flash` |
 | `glm5or` | `openrouter:z-ai/glm-5` |
 | `minimax`, `mm`, `m25` | `openrouter:minimax/minimax-m2.5` |
-| `opus` | `anthropic:claude-opus-4-5-20251101` |
-| `sonnet` | `anthropic:claude-sonnet-4-6-20251114` |
-| `haiku` | `anthropic:claude-haiku-4-5-20251001` |
+| `opus` | `anthropic:claude-opus-4-8` |
+| `sonnet` | `anthropic:claude-sonnet-5` |
+| `haiku` | `anthropic:claude-haiku-4-5` |
 
 Examples:
 
 ```text
 /model glm
-/model openrouter:anthropic/claude-sonnet-4-6
-/model anthropic:claude-sonnet-4-6-20251114
+/model openrouter:anthropic/claude-sonnet-5
+/model anthropic:claude-sonnet-5
 ```
 
 ## Reasoning

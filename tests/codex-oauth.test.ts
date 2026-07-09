@@ -299,19 +299,19 @@ describe("normalizeMessagesForResponses", () => {
 });
 
 describe("parseProviderModel — codex tier shortcuts", () => {
-  it("expands codex to gpt-5.6-sol with no implicit reasoning", () => {
+  it("expands codex to gpt-5.6-sol at Extra High (xhigh) by default", () => {
     expect(parseProviderModel("codex")).toEqual({
       provider: "codex-oauth",
       model: "gpt-5.6-sol",
-      reasoning: undefined,
+      reasoning: "xhigh",
     });
   });
 
-  it("expands the GPT-5.6 family shortcuts", () => {
+  it("expands the GPT-5.6 family shortcuts (Sol defaults to Extra High)", () => {
     expect(parseProviderModel("sol")).toEqual({
       provider: "codex-oauth",
       model: "gpt-5.6-sol",
-      reasoning: undefined,
+      reasoning: "xhigh",
     });
     expect(parseProviderModel("terra")).toEqual({
       provider: "codex-oauth",

@@ -276,7 +276,7 @@ Codex itself sends it as `max`, so the proxy tops out at `max`.)
 
 | Shortcut | Route |
 | --- | --- |
-| `codex`, `cx`, `sol`, `gpt56`, `gpt-5.6-sol` | `codex-oauth:gpt-5.6-sol` |
+| `codex`, `cx`, `sol`, `gpt56`, `gpt-5.6-sol` | `codex-oauth:gpt-5.6-sol@xhigh` (Sol defaults to Extra High; override with `@low`/`@medium`/`@high`/`@max`) |
 | `terra`, `gpt-5.6-terra` | `codex-oauth:gpt-5.6-terra` |
 | `luna`, `gpt-5.6-luna` | `codex-oauth:gpt-5.6-luna` (supports up to `@max`; no `ultra` tier upstream) |
 | `gpt55`, `gpt-5.5` | `codex-oauth:gpt-5.5` (previous frontier, 272k window) |

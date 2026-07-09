@@ -283,7 +283,8 @@ Codex itself sends it as `max`, so the proxy tops out at `max`.)
 | `fast` | `codex-oauth:gpt-5.6-sol@low` |
 | `smart` | `codex-oauth:gpt-5.6-sol@medium` |
 | `deep` | `codex-oauth:gpt-5.6-sol@high` |
-| `max`, `think` | `codex-oauth:gpt-5.6-sol@max` |
+| `xhigh`, `extra` | `codex-oauth:gpt-5.6-sol@xhigh` (Extra High) |
+| `max`, `think` | `codex-oauth:gpt-5.6-sol@max` (one rung above Extra High) |
 
 Examples:
 

@@ -66,11 +66,14 @@ const MODEL_SHORTCUTS: Record<string, string> = {
   // GPT-5.5 — previous frontier, still selectable
   gpt55: "codex-oauth:gpt-5.5",
   "gpt-5.5": "codex-oauth:gpt-5.5",
-  // Reasoning-level shortcuts (apply to Sol, the default frontier)
-  fast: "codex-oauth:gpt-5.6-sol@low",     // quick, lighter reasoning
-  smart: "codex-oauth:gpt-5.6-sol@medium", // Codex CLI default
-  deep: "codex-oauth:gpt-5.6-sol@high",    // deeper reasoning
-  max: "codex-oauth:gpt-5.6-sol@max",      // top reasoning we expose
+  // Reasoning-level shortcuts (apply to Sol, the default frontier).
+  // Ladder: low < medium < high < xhigh (Extra High) < max.
+  fast: "codex-oauth:gpt-5.6-sol@low",     // Light — quick, lighter reasoning
+  smart: "codex-oauth:gpt-5.6-sol@medium", // Medium — Codex default
+  deep: "codex-oauth:gpt-5.6-sol@high",    // High — deeper reasoning
+  xhigh: "codex-oauth:gpt-5.6-sol@xhigh",  // Extra High — one rung below max
+  extra: "codex-oauth:gpt-5.6-sol@xhigh",  // alias for xhigh (the app labels it "Extra High")
+  max: "codex-oauth:gpt-5.6-sol@max",      // Max — top reasoning we expose
   think: "codex-oauth:gpt-5.6-sol@max",    // alias for max
   // ClinePass shortcuts (Cline subscription — included models, $0 per call)
   cline: "cline-pass:glm-5.2",

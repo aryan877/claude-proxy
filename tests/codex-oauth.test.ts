@@ -346,6 +346,11 @@ describe("parseProviderModel — codex tier shortcuts", () => {
       model: "gpt-5.6-sol",
       reasoning: "high",
     });
+    expect(parseProviderModel("xhigh")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.6-sol",
+      reasoning: "xhigh",
+    });
     expect(parseProviderModel("max")).toEqual({
       provider: "codex-oauth",
       model: "gpt-5.6-sol",

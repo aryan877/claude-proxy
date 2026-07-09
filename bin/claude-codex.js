@@ -114,10 +114,11 @@ async function main() {
   console.log("");
   console.log("  Reasoning level (Sol shortcuts, or add @level to any model):");
   console.log("  ─────────────────────────────────────────────");
-  console.log("    /model fast      sol @low       Fast, lighter reasoning");
-  console.log("    /model smart     sol @medium    Balanced (Codex default)");
-  console.log("    /model deep      sol @high      Deeper reasoning");
-  console.log("    /model max       sol @max       Top reasoning");
+  console.log("    /model fast      sol @low       Light — fast, lighter reasoning");
+  console.log("    /model smart     sol @medium    Medium — balanced (Codex default)");
+  console.log("    /model deep      sol @high      High — deeper reasoning");
+  console.log("    /model xhigh     sol @xhigh     Extra High — one rung below max");
+  console.log("    /model max       sol @max       Max — top reasoning (above Extra High)");
   console.log("    /model think     sol @max       Alias for max");
   console.log("");
   console.log("  Verbatim @level works on every model:");

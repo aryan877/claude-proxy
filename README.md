@@ -11,7 +11,7 @@ Claude Code's `/model` command.
 ## TL;DR
 
 ```bash
-# OAuth Codex route. Uses gpt-5.5 by default.
+# OAuth Codex route. Uses gpt-5.6-sol by default.
 npm install -g claude-proxy-ai
 claude-codex
 

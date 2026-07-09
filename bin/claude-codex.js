@@ -17,7 +17,7 @@ const rootDir = join(__dirname, "..");
 
 const CODEX_AUTH_FILE = join(homedir(), ".codex", "auth.json");
 const PROXY_AUTH_FILE = join(homedir(), ".claude-proxy", "codex-oauth.json");
-const DEFAULT_CODEX_CONTEXT_WINDOW = 272_000;
+const DEFAULT_CODEX_CONTEXT_WINDOW = 372_000; // GPT-5.6 family (Sol/Terra/Luna); gpt-5.5 was 272k
 const DEFAULT_CODEX_EFFECTIVE_PERCENT = 95;
 
 function positiveIntEnv(name, fallback) {
@@ -104,19 +104,24 @@ async function main() {
   }
   console.log("");
 
-  // Switch by reasoning level (only model is gpt-5.5, the frontier).
-  console.log("  Model: gpt-5.5  (frontier — complex coding, research, real-world work)");
-  console.log("");
-  console.log("  Switch reasoning level with /model:");
+  // GPT-5.6 family: Sol (frontier) / Terra (balanced) / Luna (fast). Switch with /model.
+  console.log("  Models: GPT-5.6 family  (372k context window)");
   console.log("  ─────────────────────────────────────────────");
-  console.log("    /model fast      gpt-5.5 @low      Fast, lighter reasoning");
-  console.log("    /model smart     gpt-5.5 @medium   Balanced (OpenAI default)");
-  console.log("    /model deep      gpt-5.5 @high     Deeper reasoning  (proxy default)");
-  console.log("    /model max       gpt-5.5 @xhigh    Top reasoning");
-  console.log("    /model think     gpt-5.5 @xhigh    Alias for max");
+  console.log("    /model sol       gpt-5.6-sol    Frontier — hardest coding & research (default)");
+  console.log("    /model terra     gpt-5.6-terra  Balanced — everyday high-volume work");
+  console.log("    /model luna      gpt-5.6-luna   Fast & affordable — routine tasks");
+  console.log("    /model gpt55     gpt-5.5        Previous frontier (272k window)");
   console.log("");
-  console.log("  Also works:  /model codex      (= deep, the default)");
-  console.log("              /model codex@low  /model codex@xhigh  (verbatim @level)");
+  console.log("  Reasoning level (Sol shortcuts, or add @level to any model):");
+  console.log("  ─────────────────────────────────────────────");
+  console.log("    /model fast      sol @low       Fast, lighter reasoning");
+  console.log("    /model smart     sol @medium    Balanced (Codex default)");
+  console.log("    /model deep      sol @high      Deeper reasoning");
+  console.log("    /model max       sol @max       Top reasoning");
+  console.log("    /model think     sol @max       Alias for max");
+  console.log("");
+  console.log("  Verbatim @level works on every model:");
+  console.log("    /model terra@max   /model luna@high   /model sol@low   /model codex@xhigh");
   console.log("");
 
   // Extra flags
@@ -142,7 +147,7 @@ async function main() {
   await launchProxy({
     rootDir,
     provider: "codex-oauth",
-    model: "gpt-5.5",
+    model: "gpt-5.6-sol",
     defaultModel: "codex",
     startedBy: "claude-codex",
     forceRestart: args.includes("--restart"),

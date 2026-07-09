@@ -52,7 +52,7 @@ export type AnthropicRequest = {
 
 export type ProviderKey = "openai" | "openrouter" | "gemini" | "gemini-oauth" | "codex-oauth" | "glm" | "anthropic" | "cline-pass";
 
-export type ReasoningLevel = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ReasoningLevel = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export type ProviderModel = {
   provider: ProviderKey;

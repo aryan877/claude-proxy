@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **GPT-5.6 family for Codex — Sol / Terra / Luna** — the Codex OAuth route now targets OpenAI's GPT-5.6 three-tier family instead of the single `gpt-5.5`. Slugs and context windows are taken verbatim from Codex CLI 0.144.0's `codex-rs/models-manager/models.json`:
+  - `gpt-5.6-sol` — *frontier*, hardest coding & research. New `sol` / `gpt56` shortcuts; `codex` / `cx` now default here.
+  - `gpt-5.6-terra` — *balanced* everyday high-volume work. New `terra` shortcut.
+  - `gpt-5.6-luna` — *fast & affordable* routine work. New `luna` shortcut.
+  - All three carry a **372k-token context window** (vs 272k for `gpt-5.5`); `claude-codex` now advertises 372k to Claude Code via `CLAUDE_CODE_MAX_CONTEXT_TOKENS` so the context meter reads correctly. Override per-run with `CODEX_CONTEXT_WINDOW_TOKENS`.
+  - `gpt-5.5` stays fully selectable via `/model gpt55` (or `gpt-5.5`).
+  - **New `max` reasoning level.** `ReasoningLevel` and the `@level` parser now accept `max`, so `sol@max`, `terra@max`, `luna@max`, etc. work. The `max` / `think` shortcuts now map to `sol@max` (was `gpt-5.5@xhigh`). Upstream "ultra" is deliberately **not** exposed: it is a Codex-CLI multi-agent orchestration mode, and Codex itself down-maps it to `max` on the Responses wire (`reasoning_effort_for_request`), so a single-request proxy has nothing extra to send — `max` is the ceiling.
+  - Internal subagent remap for `codex-oauth` updated: Claude Code's own `sonnet`-class calls route to `gpt-5.6-sol`, `haiku`-class (title-gen, Explore, quota checks) to the cheaper `gpt-5.6-luna`.
+  - Proxy's Codex `User-Agent` version bumped `0.134.0` → `0.144.0` to match the current CLI.
+
 ### Fixed
 - **Codex `fetch failed` retries** — transient connection-level failures to the ChatGPT Codex backend (a pooled keep-alive socket the server already closed → `ECONNRESET`, or a connect/DNS blip) no longer kill the whole turn with `[codex proxy error] fetch failed`. The initial upstream `fetch()` now retries up to 3× with short backoff before giving up. This is safe because `fetch()` throws only on connection-level failures (an HTTP error status returns a resolved `Response`), so a throw means the request never reached the server and re-POSTing the identical `store:false` body is idempotent. Error messages now also unwrap undici's `.cause`, so a genuine failure reads `fetch failed (ECONNRESET)` instead of a bare `fetch failed`.
 - **ClinePass auth** — the proxy now refreshes the ClinePass access token itself instead of trusting the Cline app to keep `providers.json` fresh. ClinePass access tokens only live ~1 hour, so once the app/hub-daemon stopped refreshing, every `cp*` call (and `/model cp@high`, `/model cp@medium`, …) failed with `401 Unauthorized: Please make sure you're using the latest version of Cline…`. The adapter now:

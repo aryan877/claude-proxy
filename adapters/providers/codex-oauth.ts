@@ -40,7 +40,7 @@ const OPENAI_API_BASE = "https://api.openai.com/v1";
 const CHATGPT_CODEX_BASE = "https://chatgpt.com/backend-api/codex";
 
 const DEFAULT_ORIGINATOR = "codex_cli_rs";
-const DEFAULT_CODEX_CLI_VERSION = "0.134.0";
+const DEFAULT_CODEX_CLI_VERSION = "0.144.0";
 
 // ── Header builders ──────────────────────────────────────────────────
 
@@ -292,11 +292,14 @@ export function toResponsesInput(
 
 // ── Reasoning effort mapping ─────────────────────────────────────────
 
-function reasoningEffort(level?: ReasoningLevel): "low" | "medium" | "high" | "xhigh" {
+function reasoningEffort(level?: ReasoningLevel): "low" | "medium" | "high" | "xhigh" | "max" {
   if (level === "none" || level === "minimal") return "low"; // Codex has no thinking-off; floor to low
-  if (level) return level;
+  if (level) return level; // low | medium | high | xhigh | max pass straight through
+  // Codex maps its client-only "ultra" effort to "max" on the wire (multi-agent
+  // orchestration is a CLI concern, not a Responses param), so "max" is the ceiling
+  // the proxy ever sends. GPT-5.6 Sol/Terra/Luna accept it; older models cap at xhigh.
   const env = (process.env.CODEX_REASONING_EFFORT || "").toLowerCase();
-  if (env === "low" || env === "medium" || env === "high" || env === "xhigh") return env;
+  if (env === "low" || env === "medium" || env === "high" || env === "xhigh" || env === "max") return env;
   return "high";
 }
 

@@ -48,7 +48,7 @@ This exposes these global bins:
 
 | Command | Default route | Auth |
 | --- | --- | --- |
-| `claude-codex` | `codex-oauth:gpt-5.5` | OpenAI OAuth, or existing Codex CLI tokens |
+| `claude-codex` | `codex-oauth:gpt-5.6-sol` | OpenAI OAuth, or existing Codex CLI tokens |
 | `claude-codex-d` | Same as `claude-codex` | Adds `--dangerously-skip-permissions` |
 | `claude-gemini` | `gemini-oauth:gemini-3.1-pro-preview` | Google OAuth |
 | `claude-gemini-d` | Same as `claude-gemini` | Adds `--dangerously-skip-permissions` |
@@ -63,7 +63,8 @@ This exposes these global bins:
 ### `claude-codex`
 
 Starts the proxy with the Codex OAuth route and launches Claude Code with the
-`codex` shortcut. The current default model string in code is `gpt-5.5`.
+`codex` shortcut. The current default model string in code is `gpt-5.6-sol`
+(the GPT-5.6 frontier); `gpt-5.5` stays selectable via `/model gpt55`.
 
 ```bash
 claude-codex
@@ -267,24 +268,31 @@ Use Claude Code's `/model` command. Shortcuts are expanded by
 
 ### Codex Shortcuts
 
-All Codex shortcuts currently route to `codex-oauth:gpt-5.5`; the shortcut
-mostly chooses a reasoning level.
+Codex now routes to the **GPT-5.6 family** — Sol (frontier), Terra (balanced),
+and Luna (fast/affordable). All three share a **372k-token context window**. Add
+an `@level` suffix — `low | medium | high | xhigh | max` — to any of them.
+(Upstream "ultra" is a multi-agent CLI orchestration mode, not a wire setting;
+Codex itself sends it as `max`, so the proxy tops out at `max`.)
 
 | Shortcut | Route |
 | --- | --- |
-| `codex`, `cx`, `gpt55`, `gpt-5.5` | `codex-oauth:gpt-5.5` |
-| `fast` | `codex-oauth:gpt-5.5@low` |
-| `smart` | `codex-oauth:gpt-5.5@medium` |
-| `deep` | `codex-oauth:gpt-5.5@high` |
-| `max`, `think` | `codex-oauth:gpt-5.5@xhigh` |
+| `codex`, `cx`, `sol`, `gpt56`, `gpt-5.6-sol` | `codex-oauth:gpt-5.6-sol` |
+| `terra`, `gpt-5.6-terra` | `codex-oauth:gpt-5.6-terra` |
+| `luna`, `gpt-5.6-luna` | `codex-oauth:gpt-5.6-luna` (supports up to `@max`; no `ultra` tier upstream) |
+| `gpt55`, `gpt-5.5` | `codex-oauth:gpt-5.5` (previous frontier, 272k window) |
+| `fast` | `codex-oauth:gpt-5.6-sol@low` |
+| `smart` | `codex-oauth:gpt-5.6-sol@medium` |
+| `deep` | `codex-oauth:gpt-5.6-sol@high` |
+| `max`, `think` | `codex-oauth:gpt-5.6-sol@max` |
 
 Examples:
 
 ```text
 /model codex
-/model fast
+/model terra@max
+/model luna@high
 /model codex@xhigh
-/model codex-oauth:gpt-5.5@low
+/model codex-oauth:gpt-5.6-sol@low
 ```
 
 ### Gemini Shortcuts

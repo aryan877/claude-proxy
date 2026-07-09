@@ -7,7 +7,7 @@ import {
   ReasoningLevel,
 } from "./types.js";
 
-const VALID_REASONING: ReasoningLevel[] = ["none", "minimal", "low", "medium", "high", "xhigh"];
+const VALID_REASONING: ReasoningLevel[] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 const PROVIDER_PREFIXES: ProviderKey[] = [
   "openai",
@@ -49,17 +49,29 @@ const MODEL_SHORTCUTS: Record<string, string> = {
   "gemini-25f": "gemini-oauth:gemini-2.5-flash",
   gp: "gemini-oauth:gemini-3.1-pro-preview",
   gf: "gemini-oauth:gemini-3-flash-preview",
-  // Codex shortcuts — only gpt-5.5 (the frontier model). Switch by reasoning level.
-  codex: "codex-oauth:gpt-5.5",          // proxy default = high
-  cx: "codex-oauth:gpt-5.5",
+  // Codex shortcuts — GPT-5.6 family. Sol = frontier, Terra = balanced, Luna = fast/cheap.
+  // Every codex model takes an @level suffix: low | medium | high | xhigh | max.
+  codex: "codex-oauth:gpt-5.6-sol",      // default = Sol frontier (proxy default effort = high)
+  cx: "codex-oauth:gpt-5.6-sol",
+  // GPT-5.6 Sol — latest frontier agentic coding model
+  sol: "codex-oauth:gpt-5.6-sol",
+  gpt56: "codex-oauth:gpt-5.6-sol",
+  "gpt-5.6-sol": "codex-oauth:gpt-5.6-sol",
+  // GPT-5.6 Terra — balanced everyday model
+  terra: "codex-oauth:gpt-5.6-terra",
+  "gpt-5.6-terra": "codex-oauth:gpt-5.6-terra",
+  // GPT-5.6 Luna — fast, affordable model (no ultra tier upstream)
+  luna: "codex-oauth:gpt-5.6-luna",
+  "gpt-5.6-luna": "codex-oauth:gpt-5.6-luna",
+  // GPT-5.5 — previous frontier, still selectable
   gpt55: "codex-oauth:gpt-5.5",
   "gpt-5.5": "codex-oauth:gpt-5.5",
-  // Reasoning-level shortcuts (override @-suffix not needed)
-  fast: "codex-oauth:gpt-5.5@low",       // quick, lighter reasoning
-  smart: "codex-oauth:gpt-5.5@medium",   // Codex CLI default
-  deep: "codex-oauth:gpt-5.5@high",      // proxy default
-  max: "codex-oauth:gpt-5.5@xhigh",      // top reasoning
-  think: "codex-oauth:gpt-5.5@xhigh",    // alias for max
+  // Reasoning-level shortcuts (apply to Sol, the default frontier)
+  fast: "codex-oauth:gpt-5.6-sol@low",     // quick, lighter reasoning
+  smart: "codex-oauth:gpt-5.6-sol@medium", // Codex CLI default
+  deep: "codex-oauth:gpt-5.6-sol@high",    // deeper reasoning
+  max: "codex-oauth:gpt-5.6-sol@max",      // top reasoning we expose
+  think: "codex-oauth:gpt-5.6-sol@max",    // alias for max
   // ClinePass shortcuts (Cline subscription — included models, $0 per call)
   cline: "cline-pass:glm-5.2",
   clinepass: "cline-pass:glm-5.2",
@@ -81,7 +93,7 @@ const MODEL_SHORTCUTS: Record<string, string> = {
 // (Explore subagent, title gen, quota checks), remap to the active provider's
 // equivalent so it doesn't fail when Anthropic keys aren't configured.
 const PROVIDER_FAST_MODEL: Partial<Record<ProviderKey, string>> = {
-  "codex-oauth": "gpt-5.5",
+  "codex-oauth": "gpt-5.6-luna",
   "gemini-oauth": "gemini-3-flash-preview",
   "openai": "gpt-5-mini",
   "openrouter": "anthropic/claude-haiku-4-5",
@@ -90,7 +102,7 @@ const PROVIDER_FAST_MODEL: Partial<Record<ProviderKey, string>> = {
 };
 
 const PROVIDER_MAIN_MODEL: Partial<Record<ProviderKey, string>> = {
-  "codex-oauth": "gpt-5.5",
+  "codex-oauth": "gpt-5.6-sol",
   "gemini-oauth": "gemini-3.1-pro-preview",
   "openai": "gpt-5.5",
   "openrouter": "anthropic/claude-sonnet-5",

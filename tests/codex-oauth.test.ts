@@ -299,60 +299,93 @@ describe("normalizeMessagesForResponses", () => {
 });
 
 describe("parseProviderModel — codex tier shortcuts", () => {
-  it("expands codex to gpt-5.5 with no implicit reasoning", () => {
+  it("expands codex to gpt-5.6-sol with no implicit reasoning", () => {
     expect(parseProviderModel("codex")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.6-sol",
+      reasoning: undefined,
+    });
+  });
+
+  it("expands the GPT-5.6 family shortcuts", () => {
+    expect(parseProviderModel("sol")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.6-sol",
+      reasoning: undefined,
+    });
+    expect(parseProviderModel("terra")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.6-terra",
+      reasoning: undefined,
+    });
+    expect(parseProviderModel("luna")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.6-luna",
+      reasoning: undefined,
+    });
+    expect(parseProviderModel("gpt55")).toEqual({
       provider: "codex-oauth",
       model: "gpt-5.5",
       reasoning: undefined,
     });
   });
 
-  it("expands tier shortcuts to gpt-5.5 plus a baked-in reasoning level", () => {
+  it("expands tier shortcuts to gpt-5.6-sol plus a baked-in reasoning level", () => {
     expect(parseProviderModel("fast")).toEqual({
       provider: "codex-oauth",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       reasoning: "low",
     });
     expect(parseProviderModel("smart")).toEqual({
       provider: "codex-oauth",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       reasoning: "medium",
     });
     expect(parseProviderModel("deep")).toEqual({
       provider: "codex-oauth",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       reasoning: "high",
     });
     expect(parseProviderModel("max")).toEqual({
       provider: "codex-oauth",
-      model: "gpt-5.5",
-      reasoning: "xhigh",
+      model: "gpt-5.6-sol",
+      reasoning: "max",
     });
     expect(parseProviderModel("think")).toEqual({
       provider: "codex-oauth",
-      model: "gpt-5.5",
-      reasoning: "xhigh",
+      model: "gpt-5.6-sol",
+      reasoning: "max",
     });
   });
 
   it("lets an explicit @level override the level baked into a shortcut", () => {
     expect(parseProviderModel("fast@xhigh")).toEqual({
       provider: "codex-oauth",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       reasoning: "xhigh",
     });
   });
 
-  it("supports verbatim codex@level syntax", () => {
+  it("supports verbatim model@level syntax across the family", () => {
     expect(parseProviderModel("codex@xhigh")).toEqual({
       provider: "codex-oauth",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       reasoning: "xhigh",
     });
     expect(parseProviderModel("codex@low")).toEqual({
       provider: "codex-oauth",
-      model: "gpt-5.5",
+      model: "gpt-5.6-sol",
       reasoning: "low",
+    });
+    expect(parseProviderModel("terra@max")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.6-terra",
+      reasoning: "max",
+    });
+    expect(parseProviderModel("luna@high")).toEqual({
+      provider: "codex-oauth",
+      model: "gpt-5.6-luna",
+      reasoning: "high",
     });
   });
 });

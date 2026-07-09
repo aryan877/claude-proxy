@@ -1,146 +1,117 @@
 # Claude Proxy
 
-Use Claude Code with Codex, Gemini, GLM, OpenRouter, Anthropic, and OpenAI API
-routes through a local Anthropic-compatible proxy.
+**Run Claude Code on any model — GPT-5.6 Codex, Gemini 3, GLM-5.2, Claude, or anything on OpenRouter — without changing how you work.**
 
-Claude Code still talks to `http://127.0.0.1:17870/v1/messages`. The proxy
-translates Anthropic Messages requests into each provider's native format,
-streams the response back as Anthropic SSE, and lets you switch providers with
-Claude Code's `/model` command.
+Claude Proxy is a tiny local server that speaks the Anthropic Messages API. Claude
+Code keeps talking to `http://127.0.0.1:17870/v1/messages`; the proxy translates
+each request into the target provider's native format, streams the reply back as
+Anthropic SSE, and lets you hop between models mid-session with `/model`.
 
-## TL;DR
+Log in with the accounts you already pay for — a **ChatGPT/Codex** plan, a
+**Google** account, a **Cline** subscription — or bring plain **API keys**. No
+Anthropic key required.
 
-```bash
-# OAuth Codex route. Uses gpt-5.6-sol by default.
-npm install -g claude-proxy-ai
-claude-codex
+- **Codex (OAuth)** — GPT-5.6 **Sol / Terra / Luna** and GPT-5.5, with per-model reasoning effort
+- **Gemini (OAuth)** — Gemini 3.1 Pro / Flash, 3 Pro, and 2.5, via Google Code Assist
+- **ClinePass** — every model in your Cline subscription at `$0` per call
+- **API keys** — OpenAI Responses, OpenRouter, Google Gemini, Z.AI GLM, Anthropic passthrough
+- Streaming + non-streaming, tool use, vision, thinking blocks, and native server-side web search
 
-# OAuth Gemini route. Uses gemini-3.1-pro-preview by default.
-claude-gemini
+There's no package to install from a registry — you **clone the repo and run it
+locally**. Point your coding agent at it and it can set everything up for you; see
+[CLAUDE.md](CLAUDE.md).
 
-# ClinePass route. Uses your paid Cline subscription. Defaults to glm-5.2.
-claude-cline
+---
 
-# API-key multi-provider route. Uses glm-5 by default.
-ccx --setup
-ccx
-```
+## Setup
 
-For the older direct GLM wrapper installer:
-
-```bash
-npx claude-proxy-ai
-```
-
-That interactive installer creates `claude-glm` and shell aliases such as
-`ccg`; it is separate from the npm global launcher commands.
-
-## Install
-
-`claude-proxy-ai` is intended to be used with `npx` or installed globally.
-Local dependency installs are blocked by the package preinstall script.
+Prerequisites: **Node 18+**, **git**, and **Claude Code** already installed.
 
 ```bash
-npm install -g claude-proxy-ai
+git clone https://github.com/aryan877/claude-proxy.git
+cd claude-proxy
+npm install     # runtime deps (fastify, tsx, …)
+npm link        # exposes the launcher commands on your PATH
 ```
 
-This exposes these global bins:
+Then start a launcher — it boots the proxy, opens Claude Code wired to it, and
+stops the proxy when you exit:
 
-| Command | Default route | Auth |
+```bash
+claude-codex      # ChatGPT/Codex login  → GPT-5.6 Sol (Extra High) by default
+claude-gemini     # Google login          → Gemini 3.1 Pro
+claude-cline      # Cline subscription     → GLM-5.2 ($0/call)
+ccx --setup && ccx # your own API keys     → GLM-5.2
+```
+
+First run prints a login URL if you aren't authenticated yet.
+
+**Prefer not to `npm link`?** Run a launcher directly, or alias it:
+
+```bash
+node ~/claude-proxy/bin/claude-codex.js
+# or, in your shell rc:
+alias claude-codex="node ~/claude-proxy/bin/claude-codex.js"
+```
+
+### Commands
+
+| Command | Default model | Auth |
 | --- | --- | --- |
-| `claude-codex` | `codex-oauth:gpt-5.6-sol` | OpenAI OAuth, or existing Codex CLI tokens |
-| `claude-codex-d` | Same as `claude-codex` | Adds `--dangerously-skip-permissions` |
+| `claude-codex` | `codex-oauth:gpt-5.6-sol@xhigh` | ChatGPT/Codex OAuth, or existing Codex CLI tokens |
 | `claude-gemini` | `gemini-oauth:gemini-3.1-pro-preview` | Google OAuth |
-| `claude-gemini-d` | Same as `claude-gemini` | Adds `--dangerously-skip-permissions` |
-| `claude-cline` | `cline-pass:glm-5.2` | Cline subscription (token from the Cline app) |
-| `claude-cline-d` | Same as `claude-cline` | Adds `--dangerously-skip-permissions` |
-| `ccx` | `glm:glm-5` | API keys in `~/.claude-proxy/.env` |
-| `ccx-d` | Same as `ccx` | Adds `--dangerously-skip-permissions` |
-| `claude-proxy-ai` | Interactive installer | Creates direct GLM wrapper scripts |
+| `claude-cline` | `cline-pass:glm-5.2` | Cline subscription (token read from the Cline app) |
+| `ccx` | `glm:glm-5.2` | API keys in `~/.claude-proxy/.env` |
+
+Each has a `-d` sibling (`claude-codex-d`, `claude-gemini-d`, `claude-cline-d`,
+`ccx-d`) that adds `--dangerously-skip-permissions`. All launchers share
+`--status`, `--proxy-status`, `--restart`, `--stop`, and `-d`; `claude-codex` and
+`claude-gemini` also support `--logout`.
+
+> **After pulling changes, restart the proxy.** A launcher reuses an
+> already-running proxy, so new models/config won't apply until you run
+> `<launcher> --restart` (or `--stop`, then relaunch).
+
+---
 
 ## Launchers
 
-### `claude-codex`
+### `claude-codex` — GPT-5.6 Codex via ChatGPT/OAuth
 
-Starts the proxy with the Codex OAuth route and launches Claude Code with the
-`codex` shortcut. The current default model string in code is `gpt-5.6-sol`
-(the GPT-5.6 frontier); `gpt-5.5` stays selectable via `/model gpt55`.
+Routes Claude Code to OpenAI's ChatGPT/Codex backend. The GPT-5.6 family shares a
+**372k-token context window**; **Sol** starts at **Extra High** effort.
 
-```bash
-claude-codex
+| Shortcut | Model | Role |
+| --- | --- | --- |
+| `sol` · `codex` · `cx` | `gpt-5.6-sol` | Frontier — hardest coding & research (**default**) |
+| `terra` | `gpt-5.6-terra` | Balanced — everyday, high-volume work |
+| `luna` | `gpt-5.6-luna` | Fast & affordable — routine tasks |
+| `gpt55` | `gpt-5.5` | Previous frontier (272k window) |
+
+Tokens are looked up in `~/.claude-proxy/codex-oauth.json`, then
+`~/.codex/auth.json`. If neither exists, launch and open the login URL it prints:
+
 ```
-
-The launcher checks for OpenAI tokens in:
-
-- `~/.claude-proxy/codex-oauth.json`
-- `~/.codex/auth.json`
-
-If neither exists, start the launcher and open the login URL it prints:
-
-```bash
 http://127.0.0.1:17870/codex/login
 ```
 
-Useful flags:
+### `claude-gemini` — Gemini via Google OAuth
 
-```bash
-claude-codex --status
-claude-codex --logout
-claude-codex --proxy-status
-claude-codex --restart
-claude-codex --stop
-claude-codex -d
-```
+Routes Claude Code to Gemini through Google Code Assist. Default model is
+`gemini-3.1-pro-preview`, declared with a **1,000,000-token context window** and
+Claude Code auto-compact disabled.
 
-### `claude-gemini`
+First run, open `http://127.0.0.1:17870/google/login`. Link a **second** Google
+account for automatic failover when the first hits a 429 (rate limit):
+`http://127.0.0.1:17870/google/login/2`. Tokens live in
+`~/.claude-proxy/google-oauth.json` and `…-oauth-2.json`.
 
-Starts the proxy with the Google OAuth route and launches Claude Code with the
-`gemini` shortcut. The default model string is `gemini-3.1-pro-preview`.
-
-```bash
-claude-gemini
-```
-
-On first run, open:
-
-```bash
-http://127.0.0.1:17870/google/login
-```
-
-For automatic retry after a Google account hits a 429, link a second account
-while the proxy is running:
-
-```bash
-http://127.0.0.1:17870/google/login/2
-```
-
-Tokens are stored in `~/.claude-proxy/google-oauth.json` and
-`~/.claude-proxy/google-oauth-2.json`.
-
-Useful flags:
-
-```bash
-claude-gemini --status
-claude-gemini --logout
-claude-gemini --proxy-status
-claude-gemini --restart
-claude-gemini --stop
-claude-gemini -d
-```
-
-### `claude-cline`
+### `claude-cline` — your Cline subscription ($0/call)
 
 Routes Claude Code through your paid **Cline / ClinePass** subscription
-(`https://api.cline.bot`), so the included models cost `$0` per call. The OAuth
-token is read live from the Cline app's
-`~/.cline/data/settings/providers.json` — keep the Cline app signed in so it
-keeps the 1-hour token refreshed. The default model is `glm-5.2`.
-
-```bash
-claude-cline
-```
-
-Models (all support thinking) — switch in-session with `/model`:
+(`https://api.cline.bot`), so included models cost `$0` per call. The OAuth token
+is read live from the Cline app (`~/.cline/data/settings/providers.json`) and
+refreshed by the proxy — keep the Cline app signed in. Default model is `glm-5.2`.
 
 | Shortcut | Model | Shortcut | Model |
 | --- | --- | --- | --- |
@@ -150,42 +121,23 @@ Models (all support thinking) — switch in-session with `/model`:
 | `cpqwen` | `qwen3.7-max` | `cpmimo` | `mimo-v2.5-pro` |
 | `cpqwenplus` | `qwen3.7-plus` | `cpmimo25` | `mimo-v2.5` |
 
-Any model also works verbatim: `/model cline-pass:<id>`.
+Any Cline model also works verbatim: `/model cline-pass:<id>`. Set a session-wide
+thinking default with `CLINE_REASONING_EFFORT` (e.g.
+`CLINE_REASONING_EFFORT=none claude-cline`).
 
-**Thinking levels** — append `@<level>` to any model: `none` / `minimal` (off,
-fastest), `low`, `medium`, `high`, `xhigh` (deepest). Thinking is on by default.
+### `ccx` — your own API keys, all providers
 
-```bash
-/model cpkimi@high      # Kimi K2.7 Code, deep reasoning
-/model cp@none          # GLM-5.2, thinking off
-/model cpflash@minimal  # DeepSeek Flash, no thinking
-```
-
-Set a session-wide default level with `CLINE_REASONING_EFFORT` (e.g.
-`CLINE_REASONING_EFFORT=none claude-cline`). Useful flags:
+Starts the multi-provider API-key route. Claude Code launches on `glm` (`glm:glm-5`).
 
 ```bash
-claude-cline --status
-claude-cline --proxy-status
-claude-cline --restart
-claude-cline --stop
-claude-cline -d
-```
-
-### `ccx`
-
-Starts the API-key multi-provider route. By default, Claude Code launches with
-`glm`, which maps to `glm:glm-5`.
-
-```bash
-ccx --setup
+ccx --setup   # writes ~/.claude-proxy/.env
 ccx
 ```
 
-`ccx --setup` creates `~/.claude-proxy/.env`.
+`ccx --setup` scaffolds `~/.claude-proxy/.env`:
 
 ```bash
-# OpenAI Responses API route
+# OpenAI Responses API
 OPENAI_API_KEY=
 OPENAI_BASE_URL=https://api.openai.com/v1
 
@@ -195,15 +147,15 @@ OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 OPENROUTER_REFERER=
 OPENROUTER_TITLE=Claude Code via ccx
 
-# Gemini API-key route
+# Gemini API key
 GEMINI_API_KEY=
 GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 
-# Z.AI GLM route
+# Z.AI GLM
 GLM_UPSTREAM_URL=https://api.z.ai/api/anthropic
 ZAI_API_KEY=
 
-# Anthropic passthrough route
+# Anthropic passthrough
 ANTHROPIC_UPSTREAM_URL=https://api.anthropic.com
 ANTHROPIC_API_KEY=
 ANTHROPIC_VERSION=2023-06-01
@@ -212,310 +164,226 @@ ANTHROPIC_VERSION=2023-06-01
 CLAUDE_PROXY_PORT=17870
 ```
 
-`GLM_API_KEY` is also accepted as a fallback for `ZAI_API_KEY`.
+`GLM_API_KEY` is accepted as a fallback for `ZAI_API_KEY`.
 
-Useful flags:
+---
 
-```bash
-ccx --status
-ccx --proxy-status
-ccx --restart
-ccx --stop
-ccx -d
-```
+## Switching models
 
-### `npx claude-proxy-ai`
-
-Runs the interactive direct GLM installer for macOS, Linux, and Windows. It
-creates a `claude-glm` wrapper under the user's bin directory and stores direct
-Claude Code config in `~/.claude-glm`.
-
-```bash
-npx claude-proxy-ai
-```
-
-The Unix installer also adds aliases:
-
-```bash
-cc              # claude
-ccg             # claude-glm
-claude-d        # claude --dangerously-skip-permissions
-claude-glm-d    # claude-glm --dangerously-skip-permissions
-```
-
-## Switching Models
-
-Use Claude Code's `/model` command. Shortcuts are expanded by
-`adapters/map.ts`; full provider routes also work.
+Use Claude Code's `/model` command. Shortcuts are defined in `adapters/map.ts`;
+explicit provider routes always work too.
 
 ```text
-/model shortcut
-/model provider:model-name
-/model provider/model-name
+/model sol            # a shortcut
+/model codex-oauth:gpt-5.6-terra
+/model gemini-oauth/gemini-3-flash-preview
 ```
 
-### Provider Prefixes
+### Provider prefixes
 
 | Prefix | Route |
 | --- | --- |
-| `codex-oauth` | OpenAI OAuth / ChatGPT Codex backend |
-| `gemini-oauth` | Google OAuth / Code Assist Gemini route |
-| `openai` | OpenAI Responses API with `OPENAI_API_KEY` |
-| `gemini` | Gemini API with `GEMINI_API_KEY` |
-| `openrouter` | OpenRouter with `OPENROUTER_API_KEY` |
-| `glm` | Z.AI Anthropic-compatible GLM route |
+| `codex-oauth` | ChatGPT/Codex backend (OAuth) |
+| `gemini-oauth` | Google Code Assist / Gemini (OAuth) |
+| `cline-pass` | Cline subscription |
+| `openai` | OpenAI Responses API (`OPENAI_API_KEY`) |
+| `gemini` | Gemini API (`GEMINI_API_KEY`) |
+| `openrouter` | OpenRouter (`OPENROUTER_API_KEY`) |
+| `glm` | Z.AI Anthropic-compatible GLM |
 | `anthropic` | Anthropic passthrough |
 
-### Codex Shortcuts
+### Codex (GPT-5.6) shortcuts
 
-Codex now routes to the **GPT-5.6 family** — Sol (frontier), Terra (balanced),
-and Luna (fast/affordable). All three share a **372k-token context window**. Add
-an `@level` suffix — `low | medium | high | xhigh | max` — to any of them.
-(Upstream "ultra" is a multi-agent CLI orchestration mode, not a wire setting;
-Codex itself sends it as `max`, so the proxy tops out at `max`.)
+Model shortcuts plus reasoning-effort shortcuts. Sol/Terra/Luna carry a 372k
+window; Sol defaults to **Extra High**, the others to **High**.
 
 | Shortcut | Route |
 | --- | --- |
-| `codex`, `cx`, `sol`, `gpt56`, `gpt-5.6-sol` | `codex-oauth:gpt-5.6-sol@xhigh` (Sol defaults to Extra High; override with `@low`/`@medium`/`@high`/`@max`) |
-| `terra`, `gpt-5.6-terra` | `codex-oauth:gpt-5.6-terra` |
-| `luna`, `gpt-5.6-luna` | `codex-oauth:gpt-5.6-luna` (supports up to `@max`; no `ultra` tier upstream) |
-| `gpt55`, `gpt-5.5` | `codex-oauth:gpt-5.5` (previous frontier, 272k window) |
-| `fast` | `codex-oauth:gpt-5.6-sol@low` |
-| `smart` | `codex-oauth:gpt-5.6-sol@medium` |
-| `deep` | `codex-oauth:gpt-5.6-sol@high` |
-| `xhigh`, `extra` | `codex-oauth:gpt-5.6-sol@xhigh` (Extra High) |
-| `max`, `think` | `codex-oauth:gpt-5.6-sol@max` (one rung above Extra High) |
+| `sol` · `codex` · `cx` · `gpt56` · `gpt-5.6-sol` | `gpt-5.6-sol@xhigh` |
+| `terra` · `gpt-5.6-terra` | `gpt-5.6-terra` |
+| `luna` · `gpt-5.6-luna` | `gpt-5.6-luna` |
+| `gpt55` · `gpt-5.5` | `gpt-5.5` (272k window) |
+| `fast` | `gpt-5.6-sol@low` |
+| `smart` | `gpt-5.6-sol@medium` |
+| `deep` | `gpt-5.6-sol@high` |
+| `xhigh` · `extra` | `gpt-5.6-sol@xhigh` |
+| `max` · `think` | `gpt-5.6-sol@max` |
 
-Examples:
+All route through `codex-oauth:`. Append `@level` to override effort on any
+model — `/model terra@max`, `/model luna@high`, `/model sol@low`.
 
-```text
-/model codex
-/model terra@max
-/model luna@high
-/model codex@xhigh
-/model codex-oauth:gpt-5.6-sol@low
-```
-
-### Gemini Shortcuts
+### Gemini shortcuts
 
 | Shortcut | Route |
 | --- | --- |
-| `gemini`, `gemini-pro`, `gp` | `gemini-oauth:gemini-3.1-pro-preview` |
-| `gemini-flash`, `gf` | `gemini-oauth:gemini-3-flash-preview` |
+| `gemini` · `gemini-pro` · `gp` · `gemini-31p` | `gemini-oauth:gemini-3.1-pro-preview` |
+| `gemini-flash` · `gf` | `gemini-oauth:gemini-3-flash-preview` |
 | `gemini-3p` | `gemini-oauth:gemini-3-pro-preview` |
-| `gemini-31p` | `gemini-oauth:gemini-3.1-pro-preview` |
 | `gemini-31f` | `gemini-oauth:gemini-3.1-flash-preview` |
-| `gemini-25p` | `gemini-oauth:gemini-2.5-pro` |
-| `gemini-25f` | `gemini-oauth:gemini-2.5-flash` |
+| `gemini-25p` · `gemini-25f` | `gemini-oauth:gemini-2.5-pro` / `gemini-2.5-flash` |
 
-Examples:
-
-```text
-/model gemini
-/model gemini-flash@low
-/model gemini-oauth:gemini-2.5-flash
-/model gemini:gemini-2.5-flash
-```
-
-### GLM, OpenRouter, and Anthropic Shortcuts
+### GLM, MiniMax, and Claude shortcuts
 
 | Shortcut | Route |
 | --- | --- |
-| `g`, `glm`, `glm5` | `glm:glm-5` |
-| `glm47` | `glm:glm-4.7` |
-| `glm45` | `glm:glm-4.5` |
-| `flash` | `glm:glm-4-flash` |
+| `g` · `glm` · `glm52z` | `glm:glm-5.2` (current flagship, 1M ctx) |
+| `glm51` · `glm5` · `glm47` · `glm45` | `glm:glm-5.1` / `glm-5` / `glm-4.7` / `glm-4.5` |
+| `flash` | `glm:glm-4.7-flash` |
 | `glm5or` | `openrouter:z-ai/glm-5` |
-| `minimax`, `mm`, `m25` | `openrouter:minimax/minimax-m2.5` |
-| `opus` | `anthropic:claude-opus-4-8` |
-| `sonnet` | `anthropic:claude-sonnet-5` |
-| `haiku` | `anthropic:claude-haiku-4-5` |
+| `minimax` · `mm` · `m25` | `openrouter:minimax/minimax-m2.5` |
+| `opus` · `sonnet` · `haiku` | `anthropic:claude-opus-4-8` / `claude-sonnet-5` / `claude-haiku-4-5` |
 
-Examples:
+---
 
-```text
-/model glm
-/model openrouter:anthropic/claude-sonnet-5
-/model anthropic:claude-sonnet-5
-```
+## Reasoning / thinking
 
-## Reasoning
+Append an effort suffix to any supported model: `@none` · `@minimal` · `@low` ·
+`@medium` · `@high` · `@xhigh` · `@max`.
 
-Append `@low`, `@medium`, `@high`, or `@xhigh` to supported model routes.
-
-| Provider | Mapping |
+| Provider | How it maps |
 | --- | --- |
-| Codex / OpenAI route | `reasoning.effort` |
-| Gemini 3.1 and Gemini Flash route | `thinkingLevel` |
-| Gemini 3 Pro route | `LOW` or `HIGH` only; `medium` is raised to `HIGH` |
-| Gemini 2.5 route | Thinking token budget |
+| Codex / OpenAI | `reasoning.effort`. GPT-5.6 accepts up to `max`; GPT-5.5 tops out at `xhigh`. `none`/`minimal` floor to `low`. |
+| Gemini 3.1 & Flash | `thinkingLevel` |
+| Gemini 3 Pro | `LOW` or `HIGH` only (`medium` is raised to `HIGH`) |
+| Gemini 2.5 | thinking token budget |
+| ClinePass | thinking level (`none`/`minimal` = off) |
 
-Codex defaults to `@high` when no explicit reasoning level is provided. Gemini
-defaults to full thinking through `claude-gemini`.
+Defaults when you don't pass a level: **Sol → Extra High (`xhigh`)**; Terra, Luna,
+and GPT-5.5 → **High**; Gemini → full thinking. Override the Codex fallback with
+`CODEX_REASONING_EFFORT`.
 
-## Context Windows
+> **Why no `ultra`?** In the Codex app, `ultra` is a multi-agent orchestration
+> mode — it spawns subagents — and Codex itself sends it to the API as `max`. A
+> single-request proxy has nothing extra to send, so `max` is the ceiling here.
 
-`claude-codex` currently declares a 272,000 token context window to Claude Code
-and auto-compacts at 95 percent of that window by default.
+---
+
+## Context windows
+
+`claude-codex` declares a **372,000-token** context window to Claude Code and
+auto-compacts at 95% by default. (GPT-5.5 is really 272k — set the override below
+for a 5.5-only session.)
 
 ```bash
-CODEX_CONTEXT_WINDOW_TOKENS=500000 claude-codex
-CODEX_AUTO_COMPACT_WINDOW_TOKENS=475000 claude-codex
+CODEX_CONTEXT_WINDOW_TOKENS=272000 claude-codex   # e.g. when staying on gpt-5.5
+CODEX_AUTO_COMPACT_WINDOW_TOKENS=340000 claude-codex
 CODEX_DISABLE_COMPACT=1 claude-codex
 ```
 
-`claude-gemini` declares a 1,000,000 token context window and disables Claude
-Code auto-compact by default.
+`claude-gemini` declares a **1,000,000-token** window and disables auto-compact by
+default.
 
-## How It Works
+---
+
+## How it works
 
 ```text
 Claude Code
-    |
-    | Anthropic Messages API
-    v
-Local proxy on 127.0.0.1:17870
-    |
-    +-- codex-oauth -> OpenAI ChatGPT/Codex backend with OAuth tokens
-    +-- gemini-oauth -> Google Code Assist / Gemini
-    +-- openai -> OpenAI Responses API with OPENAI_API_KEY
-    +-- gemini -> Gemini API with GEMINI_API_KEY
-    +-- openrouter -> OpenRouter
-    +-- glm -> Z.AI Anthropic-compatible GLM endpoint
-    +-- anthropic -> Anthropic passthrough
+    │  Anthropic Messages API
+    ▼
+Local proxy — 127.0.0.1:17870
+    ├─ codex-oauth   → ChatGPT/Codex backend (OAuth)
+    ├─ gemini-oauth  → Google Code Assist / Gemini
+    ├─ cline-pass    → Cline subscription
+    ├─ openai        → OpenAI Responses API (key)
+    ├─ gemini        → Gemini API (key)
+    ├─ openrouter    → OpenRouter
+    ├─ glm           → Z.AI Anthropic-compatible GLM
+    └─ anthropic     → Anthropic passthrough
 ```
 
 The proxy handles:
 
-- Anthropic content blocks, including text, images, tool use/results, thinking,
-  and redacted thinking.
-- Streaming and non-streaming responses.
-- Tool conversion for providers that use OpenAI or Gemini tool schemas.
-- Native server-side web search for Codex/OpenAI and Gemini routes by stripping
-  Claude Code's local `WebSearch`/`WebFetch` tools.
-- Internal Claude model remapping so Claude Code title-generation or subagent
-  probes keep using the active non-Anthropic provider when possible.
-- Vision passthrough for Codex/OpenAI and Gemini routes. For GLM, images can be
-  preprocessed into text descriptions when `OPENROUTER_API_KEY` is configured.
+- **Content blocks** — text, images, tool use/results, thinking, redacted thinking
+- **Streaming and non-streaming** replies
+- **Tool conversion** for providers on OpenAI/Gemini tool schemas
+- **Native server-side web search** for Codex/OpenAI and Gemini (Claude Code's
+  local `WebSearch`/`WebFetch` are stripped so the provider searches instead)
+- **Reasoning cache** — Codex encrypted-reasoning blobs are cached per session and
+  replayed next turn so multi-step tasks keep their chain of thought
+- **Internal-model remap** — Claude Code's own `haiku`/`sonnet` probes (title
+  generation, Explore subagent, quota checks) route to the active provider's
+  equivalent, so nothing needs an Anthropic key
+- **Vision** — passthrough for Codex/OpenAI and Gemini; for GLM, images can be
+  pre-described to text when `OPENROUTER_API_KEY` is set
 
-## Runtime Files
+---
 
-The proxy stores local runtime state under `~/.claude-proxy`.
+## Runtime files
+
+State lives under `~/.claude-proxy/` (created on first run):
 
 ```text
 ~/.claude-proxy/
-|-- .env
-|-- codex-oauth.json
-|-- google-oauth.json
-|-- google-oauth-2.json
-|-- proxy.pid
-`-- proxy.log
+├── .env                  # ccx API keys
+├── codex-oauth.json      # ChatGPT/Codex tokens
+├── google-oauth.json     # Google account 1
+├── google-oauth-2.json   # Google account 2 (failover)
+├── proxy.pid
+└── proxy.log             # routing + upstream logs
 ```
 
-The direct GLM wrapper installer stores its separate Claude Code home under
-`~/.claude-glm`.
+---
 
-## Source Layout
+## Project layout
 
 ```text
 adapters/
-|-- anthropic-gateway.ts
-|-- map.ts
-|-- openai-auth.ts
-|-- google-auth.ts
-|-- providers/
-|   |-- codex-oauth.ts
-|   |-- gemini-oauth.ts
-|   |-- openrouter.ts
-|   `-- anthropic-pass.ts
-bin/
-|-- claude-codex.js
-|-- claude-gemini.js
-|-- ccx.js
-|-- cli.js
-`-- lib/
-    |-- proxy-launcher.js
-    `-- pid-manager.js
+├── anthropic-gateway.ts   # Fastify server + /v1/messages routing
+├── map.ts                 # shortcuts + provider parsing
+├── openai-auth.ts         # Codex OAuth
+├── google-auth.ts         # Gemini OAuth
+├── codex-reasoning-cache.ts
+├── sse.ts · sse-aggregator.ts · vision-preprocess.ts · types.ts
+└── providers/
+    ├── codex-oauth.ts     # Anthropic → OpenAI Responses API
+    ├── gemini-oauth.ts    ├── cline-pass.ts
+    ├── openai-compat.ts   ├── openrouter.ts
+    └── anthropic-pass.ts
+bin/                       # launchers (claude-codex, claude-gemini, …) + lib/
 tests/
 ```
 
-## Development
+Development:
 
 ```bash
-git clone https://github.com/aryan877/claude-proxy.git
-cd claude-proxy
-npm install
-npm test
+npm test               # vitest
+npm run start:proxy    # run the gateway directly (tsx)
+npm run build          # tsc typecheck / emit
 ```
 
-Run the proxy directly in development:
-
-```bash
-npm run start:proxy
-```
-
-Allow local package development if needed:
-
-```bash
-CLAUDE_PROXY_DEV=true npm install
-```
+---
 
 ## Troubleshooting
 
-### Proxy will not start
+**Proxy won't start / stale model.** A launcher reuses a running proxy, so config
+changes need a restart:
 
 ```bash
-claude-codex --proxy-status
-claude-codex --restart
+claude-codex --restart          # or --stop, then relaunch
+claude-codex --proxy-status     # shows the active provider:model
 cat ~/.claude-proxy/proxy.log
 ```
 
-If a non-proxy process is occupying the configured port, the launcher attempts
-to clean it up with the PID lock and an `lsof` fallback.
+If a non-proxy process holds the port, the launcher cleans it up via the PID lock
+and an `lsof` fallback.
 
-### OAuth login looks stale
-
-Tokens auto-refresh, but you can force a clean login:
+**OAuth looks stale.** Tokens auto-refresh, but you can force a clean login:
 
 ```bash
-claude-codex --logout
-claude-codex
-
-claude-gemini --logout
-claude-gemini
+claude-codex --logout && claude-codex
+claude-gemini --logout && claude-gemini
 ```
 
-### `ccx` cannot find API keys
+**`ccx` can't find keys.** `ccx --setup`, fill in `~/.claude-proxy/.env`, then
+`ccx --restart`.
 
-Run:
+**`/model` didn't switch.** Use a shortcut from this README or an explicit route
+(`/model codex@high`, `/model openrouter:some-org/some-model`), then watch the
+routing line: `tail -f ~/.claude-proxy/proxy.log`.
 
-```bash
-ccx --setup
-ccx --status
-```
-
-Then edit `~/.claude-proxy/.env` and restart the proxy:
-
-```bash
-ccx --restart
-```
-
-### `/model` does not switch routes
-
-Use either a shortcut from this README or an explicit provider route:
-
-```text
-/model glm
-/model codex@high
-/model openrouter:some-org/some-model
-```
-
-Then check the routing line in:
-
-```bash
-tail -f ~/.claude-proxy/proxy.log
-```
+---
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

@@ -1,21 +1,22 @@
 {
-  "name": "claude-proxy-ai",
-  "version": "1.9.3",
-  "description": "Cross-platform installer for Claude Code with Z.AI GLM models, multi-provider proxy, Gemini OAuth, Codex OAuth, and dangerously-skip-permissions shortcuts. Run with: npx claude-proxy-ai",
+  "name": "claude-proxy",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Local Anthropic-compatible proxy that runs Claude Code on GPT-5.6 Codex, Gemini 3, GLM-5.2, Claude, and any OpenAI/OpenRouter model, with in-session /model switching and OAuth login. Clone and set up locally.",
   "keywords": [
     "claude",
     "claude-code",
+    "codex",
+    "gpt-5",
+    "gemini",
     "glm",
     "z.ai",
     "openai",
     "openrouter",
-    "gemini",
-    "gemini-oauth",
-    "codex-oauth",
-    "google",
+    "anthropic",
+    "oauth",
     "ai",
     "llm",
-    "installer",
     "proxy"
   ],
   "homepage": "https://github.com/aryan877/claude-proxy#readme",
@@ -30,7 +31,6 @@
   "author": "aryan877",
   "type": "module",
   "bin": {
-    "claude-proxy-ai": "bin/cli.js",
     "claude-codex": "bin/claude-codex.js",
     "claude-codex-d": "bin/claude-codex-d.js",
     "claude-gemini": "bin/claude-gemini.js",
@@ -40,17 +40,7 @@
     "ccx": "bin/ccx.js",
     "ccx-d": "bin/ccx-d.js"
   },
-  "files": [
-    "bin/",
-    "adapters/",
-    "install.sh",
-    "install.ps1",
-    "tsconfig.json",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
-    "preinstall": "node bin/preinstall.js",
     "start:proxy": "tsx adapters/anthropic-gateway.ts",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run"
@@ -68,6 +58,5 @@
     "tsx": "^4.21.0",
     "typescript": "^5.6.3",
     "vitest": "^4.0.18"
-  },
-  "main": "index.js"
+  }
 }

@@ -5,9 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] — 2026-07-10
 
 ### Added
+- **`CLAUDE.md`** — a setup-and-operation guide for coding agents: local setup, verify with a `/healthz` probe, per-route auth, model switching, and the "restart the proxy after edits" gotcha.
+- **`xhigh` (Extra High) reasoning shortcut** — a first-class rung between `high` and `max` (`xhigh`/`extra` → `sol@xhigh`), shown in the launcher menu. The effort ladder is now `low < medium < high < xhigh < max`.
 - **GPT-5.6 family for Codex — Sol / Terra / Luna** — the Codex OAuth route now targets OpenAI's GPT-5.6 three-tier family instead of the single `gpt-5.5`. Slugs and context windows are taken verbatim from Codex CLI 0.144.0's `codex-rs/models-manager/models.json`:
   - `gpt-5.6-sol` — *frontier*, hardest coding & research. New `sol` / `gpt56` shortcuts; `codex` / `cx` now default here.
   - `gpt-5.6-terra` — *balanced* everyday high-volume work. New `terra` shortcut.
@@ -17,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **New `max` reasoning level.** `ReasoningLevel` and the `@level` parser now accept `max`, so `sol@max`, `terra@max`, `luna@max`, etc. work. The `max` / `think` shortcuts now map to `sol@max` (was `gpt-5.5@xhigh`). Upstream "ultra" is deliberately **not** exposed: it is a Codex-CLI multi-agent orchestration mode, and Codex itself down-maps it to `max` on the Responses wire (`reasoning_effort_for_request`), so a single-request proxy has nothing extra to send — `max` is the ceiling.
   - Internal subagent remap for `codex-oauth` updated: Claude Code's own `sonnet`-class calls route to `gpt-5.6-sol`, `haiku`-class (title-gen, Explore, quota checks) to the cheaper `gpt-5.6-luna`.
   - Proxy's Codex `User-Agent` version bumped `0.134.0` → `0.144.0` to match the current CLI.
+
+### Changed
+- **Sol defaults to Extra High effort.** `codex`/`cx`/`sol`/`gpt56`/`gpt-5.6-sol` now resolve to `gpt-5.6-sol@xhigh`, matching the ChatGPT app's Sol default, so launching `claude-codex` lands on Sol · Extra High. Explicit `@level` (and the `fast`/`smart`/`deep`/`max` shortcuts) still override. Terra, Luna, and GPT-5.5 keep the `high` fallback.
+- **GLM route modernized to the current Z.AI lineup.** `g`/`glm` now map to **`glm-5.2`** (the 2026-06-16 flagship, 1M context) instead of the older `glm-5`; `flash` maps to **`glm-4.7-flash`** (was the ancient `glm-4-flash`); added `glm51` → `glm-5.1` and `glm52z` → `glm-5.2` (explicit Z.AI, since the bare `glm52` is the Cline route). Version-specific `glm5`/`glm47`/`glm45` aliases stay. Internal remap for the `glm` provider updated: main `glm-5` → `glm-5.2`, fast `glm-4.5-air` → `glm-4.7-flash`.
 
 ### Fixed
 - **Codex `fetch failed` retries** — transient connection-level failures to the ChatGPT Codex backend (a pooled keep-alive socket the server already closed → `ECONNRESET`, or a connect/DNS blip) no longer kill the whole turn with `[codex proxy error] fetch failed`. The initial upstream `fetch()` now retries up to 3× with short backoff before giving up. This is safe because `fetch()` throws only on connection-level failures (an HTTP error status returns a resolved `Response`), so a throw means the request never reached the server and re-POSTing the identical `store:false` body is idempotent. Error messages now also unwrap undici's `.cause`, so a genuine failure reads `fetch failed (ECONNRESET)` instead of a bare `fetch failed`.
@@ -52,73 +58,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Reasoning levels now include `none` and `minimal` (thinking off) alongside `low`/`medium`/`high`/`xhigh`; ClinePass passes the full set through natively, Codex floors `none`/`minimal` to `low`, Gemini 3 maps them to its lowest thinking level
-
-## [1.0.3] - 2025-10-01
-
-### Changed
-- Removed global installation support - npx only
-- Updated preinstall script to block ALL installation methods (local and global)
-- Clearer error messaging emphasizing npx as the only supported method
-
-## [1.0.2] - 2025-10-01
-
-### Added
-- Preinstall check to prevent incorrect installation method
-- Error message directing users to use `npx` instead of `npm i`
-- Support for global installation with `-g` flag
-
-### Changed
-- Installation now blocks when users try `npm i claude-glm-installer` locally
-- Improved user guidance for correct installation method
-
-## [1.0.1] - 2025-10-01
-
-### Changed
-- Updated package description to include npx usage instructions
-- Clarified installation method in npm package listing
-
-## [1.0.0] - 2025-10-01
-
-### Added
-- Windows PowerShell support with full feature parity
-- Cross-platform npm package installer (`npx claude-glm-installer`)
-- Automatic detection and cleanup of old wrapper installations
-- GLM-4.6 model support as new default
-- GLM-4.5 wrapper (ccg45) for backward compatibility
-- Universal bootstrap script for OS auto-detection
-- Comprehensive Windows documentation and troubleshooting
-- Platform-specific installation paths and configuration
-- Bash installer for Unix/Linux/macOS
-- Support for GLM-4.5 and GLM-4.5-Air models
-- Isolated configuration directories per model
-- Shell aliases (ccg, ccg45, ccf, cc)
-- No sudo/admin required installation
-- Wrapper scripts in ~/.local/bin
-- Z.AI API key integration
-- Separate chat histories per model
-- Error reporting system with GitHub issue integration
-- Test mode for error reporting (`--test-error` flag)
-- Debug mode (`--debug` flag)
-- User consent prompts for error reporting
-
-### Changed
-- Updated default model from GLM-4.5 to GLM-4.6
-- Renamed aliases: removed `cca`, kept `cc` for regular Claude
-- Improved installation flow with old wrapper detection
-- Enhanced README with collapsible platform-specific sections
-- Updated cross-platform support documentation
-
-### Fixed
-- PATH conflicts when multiple wrapper installations exist
-- Version mismatches from old wrapper files
-- Installation detection across different locations
-- PowerShell parsing errors when piping through `iex`
-- Nested here-string issues in PowerShell
-- Subexpression parsing errors in piped contexts
-- Terminal/PowerShell window persistence after errors
-
-[Unreleased]: https://github.com/JoeInnsp23/claude-glm-wrapper/compare/v1.0.3...HEAD
-[1.0.3]: https://github.com/JoeInnsp23/claude-glm-wrapper/compare/v1.0.2...v1.0.3
-[1.0.2]: https://github.com/JoeInnsp23/claude-glm-wrapper/compare/v1.0.1...v1.0.2
-[1.0.1]: https://github.com/JoeInnsp23/claude-glm-wrapper/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/JoeInnsp23/claude-glm-wrapper/releases/tag/v1.0.0

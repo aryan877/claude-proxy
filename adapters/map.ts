@@ -22,14 +22,16 @@ const PROVIDER_PREFIXES: ProviderKey[] = [
 
 // Model shortcuts - add your own aliases here
 const MODEL_SHORTCUTS: Record<string, string> = {
-  // GLM shortcuts
-  g: "glm:glm-5",
-  glm: "glm:glm-5",
+  // GLM shortcuts (Z.AI). glm-5.2 is the current flagship (1M context, Max thinking).
+  g: "glm:glm-5.2",
+  glm: "glm:glm-5.2",
+  glm52z: "glm:glm-5.2",   // explicit Z.AI GLM-5.2 (glm52 alone = the Cline route)
+  glm51: "glm:glm-5.1",
+  glm5: "glm:glm-5",
   glm47: "glm:glm-4.7",
   glm45: "glm:glm-4.5",
-  glm5: "glm:glm-5",
   glm5or: "openrouter:z-ai/glm-5",
-  flash: "glm:glm-4-flash",
+  flash: "glm:glm-4.7-flash",
   // MiniMax shortcuts
   minimax: "openrouter:minimax/minimax-m2.5",
   mm: "openrouter:minimax/minimax-m2.5",
@@ -101,7 +103,7 @@ const PROVIDER_FAST_MODEL: Partial<Record<ProviderKey, string>> = {
   "gemini-oauth": "gemini-3-flash-preview",
   "openai": "gpt-5-mini",
   "openrouter": "anthropic/claude-haiku-4-5",
-  "glm": "glm-4.5-air",
+  "glm": "glm-4.7-flash",
   "cline-pass": "glm-5.2",
 };
 
@@ -110,7 +112,7 @@ const PROVIDER_MAIN_MODEL: Partial<Record<ProviderKey, string>> = {
   "gemini-oauth": "gemini-3.1-pro-preview",
   "openai": "gpt-5.5",
   "openrouter": "anthropic/claude-sonnet-5",
-  "glm": "glm-5",
+  "glm": "glm-5.2",
   "cline-pass": "glm-5.2",
 };
 

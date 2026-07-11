@@ -5,6 +5,7 @@ import {
   toResponsesInput,
   textFromResponsesMessageItem,
   normalizeMessagesForResponses,
+  splitInputTokenUsage,
 } from "../adapters/providers/codex-oauth.js";
 import { parseProviderModel } from "../adapters/map.js";
 import { conversationKey, threadIdFor } from "../adapters/codex-reasoning-cache.js";
@@ -295,6 +296,25 @@ describe("normalizeMessagesForResponses", () => {
     ];
 
     expect(normalizeMessagesForResponses(messages)).toBe(messages);
+  });
+});
+
+describe("splitInputTokenUsage", () => {
+  it("converts OpenAI's overlapping cached count into additive Anthropic buckets", () => {
+    const usage = splitInputTokenUsage(167_111, 166_528);
+
+    expect(usage).toEqual({
+      inputTokens: 583,
+      cacheReadInputTokens: 166_528,
+    });
+    expect(usage.inputTokens + usage.cacheReadInputTokens).toBe(167_111);
+  });
+
+  it("clamps malformed cached counts so emitted usage stays non-negative", () => {
+    expect(splitInputTokenUsage(100, 120)).toEqual({
+      inputTokens: 0,
+      cacheReadInputTokens: 100,
+    });
   });
 });
 

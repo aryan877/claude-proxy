@@ -521,6 +521,24 @@ type StreamState = {
   stopReason: "end_turn" | "tool_use" | "max_tokens" | "stop_sequence";
 };
 
+/**
+ * OpenAI reports cached input tokens as a subset of input_tokens, while the
+ * Anthropic usage schema uses separate, additive input/cache-read buckets.
+ * Split the overlapping OpenAI counts so Anthropic clients do not count the
+ * cached portion twice when estimating context usage.
+ */
+export function splitInputTokenUsage(
+  totalInputTokens: number,
+  cachedInputTokens: number,
+): { inputTokens: number; cacheReadInputTokens: number } {
+  const total = Math.max(0, totalInputTokens);
+  const cached = Math.min(total, Math.max(0, cachedInputTokens));
+  return {
+    inputTokens: total - cached,
+    cacheReadInputTokens: cached,
+  };
+}
+
 function makeState(): StreamState {
   return {
     msgId: `msg_${Date.now()}`,
@@ -843,9 +861,13 @@ function handleEvent(
         | undefined;
       const u = resp?.usage;
       if (u) {
-        s.inputTokens = u.input_tokens ?? 0;
+        const inputUsage = splitInputTokenUsage(
+          u.input_tokens ?? 0,
+          u.input_tokens_details?.cached_tokens ?? 0,
+        );
+        s.inputTokens = inputUsage.inputTokens;
         s.outputTokens = u.output_tokens ?? 0;
-        s.cacheReadInputTokens = u.input_tokens_details?.cached_tokens ?? 0;
+        s.cacheReadInputTokens = inputUsage.cacheReadInputTokens;
       }
       return;
     }

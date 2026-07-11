@@ -262,7 +262,10 @@ and GPT-5.5 → **High**; Gemini → full thinking. Override the Codex fallback 
 
 `claude-codex` declares a **372,000-token** context window to Claude Code and
 auto-compacts at 95% by default. (GPT-5.5 is really 272k — set the override below
-for a 5.5-only session.)
+for a 5.5-only session.) Claude Code's generated compaction-summary turn is
+automatically capped at **Medium** reasoning so a normal Extra High/Max session
+does not spend several minutes overthinking the summary; ordinary turns keep
+their selected effort.
 
 ```bash
 CODEX_CONTEXT_WINDOW_TOKENS=272000 claude-codex   # e.g. when staying on gpt-5.5

@@ -40,7 +40,7 @@ const OPENAI_API_BASE = "https://api.openai.com/v1";
 const CHATGPT_CODEX_BASE = "https://chatgpt.com/backend-api/codex";
 
 const DEFAULT_ORIGINATOR = "codex_cli_rs";
-const DEFAULT_CODEX_CLI_VERSION = "0.144.0";
+const DEFAULT_CODEX_CLI_VERSION = "0.144.1";
 
 // ── Header builders ──────────────────────────────────────────────────
 
@@ -141,6 +141,30 @@ function flattenSystem(system: AnthropicRequest["system"]): string {
     .map((b) => (typeof b === "string" ? b : (b as { text?: string }).text || ""))
     .filter(Boolean)
     .join("\n");
+}
+
+const CLAUDE_COMPACTION_PROMPT_MARKERS = [
+  "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.",
+  "Your task is to create a detailed summary of",
+];
+
+/** Detect Claude Code's generated compaction turn without affecting user prompts about summaries. */
+export function isClaudeCompactionRequest(body: AnthropicRequest): boolean {
+  let message: AnthropicMessage | undefined;
+  for (let i = body.messages.length - 1; i >= 0; i--) {
+    if (body.messages[i].role === "user") {
+      message = body.messages[i];
+      break;
+    }
+  }
+  if (!message) return false;
+  const text = typeof message.content === "string"
+    ? message.content
+    : message.content
+        .filter((block): block is Extract<AnthropicContentBlock, { type: "text" }> => block.type === "text")
+        .map((block) => block.text)
+        .join("\n");
+  return CLAUDE_COMPACTION_PROMPT_MARKERS.every((marker) => text.includes(marker));
 }
 
 function previewText(text: string, max = 160): string {
@@ -303,6 +327,15 @@ function reasoningEffort(level?: ReasoningLevel): "low" | "medium" | "high" | "x
   return "high";
 }
 
+export function effectiveReasoningEffort(
+  body: AnthropicRequest,
+  level?: ReasoningLevel,
+): "low" | "medium" | "high" | "xhigh" | "max" {
+  const effort = reasoningEffort(level);
+  if (!isClaudeCompactionRequest(body)) return effort;
+  return effort === "low" || effort === "medium" ? effort : "medium";
+}
+
 function reasoningSummary(): "auto" | "concise" | "detailed" | null {
   const env = (process.env.CODEX_REASONING_SUMMARY || "").toLowerCase();
   if (env === "concise" || env === "detailed" || env === "auto") return env;
@@ -440,6 +473,8 @@ async function chatCodexOAuthInner(
   const verbosity = textVerbosity();
   const summary = reasoningSummary();
   const instructions = flattenSystem(body.system);
+  const isCompaction = isClaudeCompactionRequest(body);
+  const effectiveEffort = effectiveReasoningEffort(body, reasoning);
 
   // ── Build request body (matches ResponsesApiRequest in codex-rs/codex-api/src/common.rs) ──
   const reqBody: Record<string, unknown> = {
@@ -449,7 +484,7 @@ async function chatCodexOAuthInner(
     tools,
     tool_choice: toResponsesToolChoice(body.tool_choice),
     parallel_tool_calls: false,
-    reasoning: { effort: reasoningEffort(reasoning), ...(summary ? { summary } : {}) },
+    reasoning: { effort: effectiveEffort, ...(summary ? { summary } : {}) },
     store: false,
     stream: true,
     include: ["reasoning.encrypted_content"],
@@ -484,7 +519,7 @@ async function chatCodexOAuthInner(
   const lastInput = responseItemSummary(input.at(-1));
 
   console.log(
-    `[codex] ${isOAuth ? "ChatGPT" : "API"} | model="${model}" messages=${messages.length} systemChars=${instructions.length} items=${input.length} tools=${tools.length} reasoning=${reasoningEffort(reasoning)} cache=${cachedReasoning.length}${reasoningCacheDisabled ? " cacheDisabled=1" : ""} movedTrailingDeveloper=${trailingDeveloperMoved} reqKiB=${(reqJson.length / 1024).toFixed(1)} reasoningItems=${reasoningInputCount} fnCalls=${functionCallCount} fnOutputs=${functionOutputCount} last=${JSON.stringify(lastInput)}`,
+    `[codex] ${isOAuth ? "ChatGPT" : "API"} | model="${model}" messages=${messages.length} systemChars=${instructions.length} items=${input.length} tools=${tools.length} reasoning=${effectiveEffort}${isCompaction ? " compaction=1" : ""} cache=${cachedReasoning.length}${reasoningCacheDisabled ? " cacheDisabled=1" : ""} movedTrailingDeveloper=${trailingDeveloperMoved} reqKiB=${(reqJson.length / 1024).toFixed(1)} reasoningItems=${reasoningInputCount} fnCalls=${functionCallCount} fnOutputs=${functionOutputCount} last=${JSON.stringify(lastInput)}`,
   );
 
   const upstream = await fetchCodexWithRetry(url, {

@@ -6,6 +6,8 @@ import {
   textFromResponsesMessageItem,
   normalizeMessagesForResponses,
   splitInputTokenUsage,
+  isClaudeCompactionRequest,
+  effectiveReasoningEffort,
 } from "../adapters/providers/codex-oauth.js";
 import { parseProviderModel } from "../adapters/map.js";
 import { conversationKey, threadIdFor } from "../adapters/codex-reasoning-cache.js";
@@ -315,6 +317,45 @@ describe("splitInputTokenUsage", () => {
       inputTokens: 0,
       cacheReadInputTokens: 100,
     });
+  });
+});
+
+describe("Claude Code compaction detection", () => {
+  const compactionPrompt = `CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.
+Your task is to create a detailed summary of the conversation so far.`;
+
+  it("caps generated compaction turns at medium reasoning", () => {
+    const body: import("../adapters/types.js").AnthropicRequest = {
+      model: "codex",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: compactionPrompt },
+            { type: "tool_result", tool_use_id: "call_1", content: "done" },
+          ],
+        },
+      ],
+    };
+
+    expect(isClaudeCompactionRequest(body)).toBe(true);
+    expect(effectiveReasoningEffort(body, "xhigh")).toBe("medium");
+    expect(effectiveReasoningEffort(body, "max")).toBe("medium");
+    expect(effectiveReasoningEffort(body, "low")).toBe("low");
+  });
+
+  it("does not alter ordinary requests or generic summary requests", () => {
+    const body: import("../adapters/types.js").AnthropicRequest = {
+      model: "codex",
+      messages: [
+        { role: "user", content: compactionPrompt },
+        { role: "assistant", content: "Previous summary." },
+        { role: "user", content: "Please create a detailed summary of this file." },
+      ],
+    };
+
+    expect(isClaudeCompactionRequest(body)).toBe(false);
+    expect(effectiveReasoningEffort(body, "xhigh")).toBe("xhigh");
   });
 });
 

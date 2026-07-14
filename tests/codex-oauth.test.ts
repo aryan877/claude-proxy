@@ -360,19 +360,19 @@ Your task is to create a detailed summary of the conversation so far.`;
 });
 
 describe("parseProviderModel — codex tier shortcuts", () => {
-  it("expands codex to gpt-5.6-sol at Extra High (xhigh) by default", () => {
+  it("expands codex to gpt-5.6-sol at High by default", () => {
     expect(parseProviderModel("codex")).toEqual({
       provider: "codex-oauth",
       model: "gpt-5.6-sol",
-      reasoning: "xhigh",
+      reasoning: "high",
     });
   });
 
-  it("expands the GPT-5.6 family shortcuts (Sol defaults to Extra High)", () => {
+  it("expands the GPT-5.6 family shortcuts (Sol defaults to High)", () => {
     expect(parseProviderModel("sol")).toEqual({
       provider: "codex-oauth",
       model: "gpt-5.6-sol",
-      reasoning: "xhigh",
+      reasoning: "high",
     });
     expect(parseProviderModel("terra")).toEqual({
       provider: "codex-oauth",

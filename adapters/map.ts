@@ -53,13 +53,13 @@ const MODEL_SHORTCUTS: Record<string, string> = {
   gf: "gemini-oauth:gemini-3-flash-preview",
   // Codex shortcuts — GPT-5.6 family. Sol = frontier, Terra = balanced, Luna = fast/cheap.
   // Every codex model takes an @level suffix: low | medium | high | xhigh | max.
-  codex: "codex-oauth:gpt-5.6-sol@xhigh", // default = Sol frontier at Extra High (matches the app's Sol default)
-  cx: "codex-oauth:gpt-5.6-sol@xhigh",
-  // GPT-5.6 Sol — latest frontier agentic coding model. Defaults to Extra High
-  // effort (the app's Sol default); override with @low/@medium/@high/@max.
-  sol: "codex-oauth:gpt-5.6-sol@xhigh",
-  gpt56: "codex-oauth:gpt-5.6-sol@xhigh",
-  "gpt-5.6-sol": "codex-oauth:gpt-5.6-sol@xhigh",
+  codex: "codex-oauth:gpt-5.6-sol@high", // default = Sol frontier at High
+  cx: "codex-oauth:gpt-5.6-sol@high",
+  // GPT-5.6 Sol — latest frontier agentic coding model. Defaults to High
+  // effort; override with @low/@medium/@xhigh/@max.
+  sol: "codex-oauth:gpt-5.6-sol@high",
+  gpt56: "codex-oauth:gpt-5.6-sol@high",
+  "gpt-5.6-sol": "codex-oauth:gpt-5.6-sol@high",
   // GPT-5.6 Terra — balanced everyday model
   terra: "codex-oauth:gpt-5.6-terra",
   "gpt-5.6-terra": "codex-oauth:gpt-5.6-terra",

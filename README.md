@@ -38,7 +38,7 @@ Then start a launcher — it boots the proxy, opens Claude Code wired to it, and
 stops the proxy when you exit:
 
 ```bash
-claude-codex      # ChatGPT/Codex login  → GPT-5.6 Sol (Extra High) by default
+claude-codex      # ChatGPT/Codex login  → GPT-5.6 Sol (High) by default
 claude-gemini     # Google login          → Gemini 3.1 Pro
 claude-cline      # Cline subscription     → GLM-5.2 ($0/call)
 ccx --setup && ccx # your own API keys     → GLM-5.2
@@ -58,7 +58,7 @@ alias claude-codex="node ~/claude-proxy/bin/claude-codex.js"
 
 | Command | Default model | Auth |
 | --- | --- | --- |
-| `claude-codex` | `codex-oauth:gpt-5.6-sol@xhigh` | ChatGPT/Codex OAuth, or existing Codex CLI tokens |
+| `claude-codex` | `codex-oauth:gpt-5.6-sol@high` | ChatGPT/Codex OAuth, or existing Codex CLI tokens |
 | `claude-gemini` | `gemini-oauth:gemini-3.1-pro-preview` | Google OAuth |
 | `claude-cline` | `cline-pass:glm-5.2` | Cline subscription (token read from the Cline app) |
 | `ccx` | `glm:glm-5.2` | API keys in `~/.claude-proxy/.env` |
@@ -79,7 +79,7 @@ Each has a `-d` sibling (`claude-codex-d`, `claude-gemini-d`, `claude-cline-d`,
 ### `claude-codex` — GPT-5.6 Codex via ChatGPT/OAuth
 
 Routes Claude Code to OpenAI's ChatGPT/Codex backend. The GPT-5.6 family shares a
-**372k-token context window**; **Sol** starts at **Extra High** effort.
+**372k-token context window**; **Sol** starts at **High** effort.
 
 | Shortcut | Model | Role |
 | --- | --- | --- |
@@ -195,11 +195,11 @@ explicit provider routes always work too.
 ### Codex (GPT-5.6) shortcuts
 
 Model shortcuts plus reasoning-effort shortcuts. Sol/Terra/Luna carry a 372k
-window; Sol defaults to **Extra High**, the others to **High**.
+window; Sol and the other GPT-5.6 models default to **High**.
 
 | Shortcut | Route |
 | --- | --- |
-| `sol` · `codex` · `cx` · `gpt56` · `gpt-5.6-sol` | `gpt-5.6-sol@xhigh` |
+| `sol` · `codex` · `cx` · `gpt56` · `gpt-5.6-sol` | `gpt-5.6-sol@high` |
 | `terra` · `gpt-5.6-terra` | `gpt-5.6-terra` |
 | `luna` · `gpt-5.6-luna` | `gpt-5.6-luna` |
 | `gpt55` · `gpt-5.5` | `gpt-5.5` (272k window) |
@@ -248,8 +248,8 @@ Append an effort suffix to any supported model: `@none` · `@minimal` · `@low` 
 | Gemini 2.5 | thinking token budget |
 | ClinePass | thinking level (`none`/`minimal` = off) |
 
-Defaults when you don't pass a level: **Sol → Extra High (`xhigh`)**; Terra, Luna,
-and GPT-5.5 → **High**; Gemini → full thinking. Override the Codex fallback with
+Defaults when you don't pass a level: **Sol, Terra, and Luna → High**; GPT-5.5 →
+**High**; Gemini → full thinking. Override the Codex fallback with
 `CODEX_REASONING_EFFORT`.
 
 > **Why no `ultra`?** In the Codex app, `ultra` is a multi-agent orchestration

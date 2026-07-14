@@ -65,7 +65,7 @@ Launch: `claude-codex` (or `claude-gemini` / `claude-cline` / `ccx`). Add `-d` f
 
 In-session, switch with Claude Code's `/model`:
 
-- Codex: `sol` (default, Extra High), `terra`, `luna`, `gpt55`; effort via
+- Codex: `sol` (default, High), `terra`, `luna`, `gpt55`; effort via
   `@low|@medium|@high|@xhigh|@max` (e.g. `/model terra@max`) or the `fast|smart|
   deep|xhigh|max` shortcuts.
 - Any explicit route works: `/model <provider>:<model>` — provider prefixes are
